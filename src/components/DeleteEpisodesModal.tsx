@@ -1,0 +1,265 @@
+import { useState, useEffect } from "react";
+import { Trash2, Check, X, AlertTriangle, Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { EpisodeDeleteInfo, getEpisodesForDelete, deleteMediaFiles } from "@/services/api";
+
+interface DeleteEpisodesModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    seriesId: number;
+    seriesTitle: string;
+    onDeleteComplete: () => void;
+}
+
+export function DeleteEpisodesModal({
+    isOpen,
+    onClose,
+    seriesId,
+    seriesTitle,
+    onDeleteComplete,
+}: DeleteEpisodesModalProps) {
+    const [episodes, setEpisodes] = useState<EpisodeDeleteInfo[]>([]);
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [isLoading, setIsLoading] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Load episodes when modal opens
+    useEffect(() => {
+        if (isOpen && seriesId) {
+            loadEpisodes();
+        }
+    }, [isOpen, seriesId]);
+
+    const loadEpisodes = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const eps = await getEpisodesForDelete(seriesId);
+            setEpisodes(eps);
+            setSelectedIds(new Set()); // Reset selection
+        } catch (err) {
+            setError("Failed to load episodes");
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const toggleEpisode = (id: number) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            return next;
+        });
+    };
+
+    const selectAll = () => {
+        setSelectedIds(new Set(episodes.map((ep) => ep.id)));
+    };
+
+    const deselectAll = () => {
+        setSelectedIds(new Set());
+    };
+
+    const handleDelete = async () => {
+        if (selectedIds.size === 0) return;
+
+        setIsDeleting(true);
+        setError(null);
+
+        try {
+            const idsToDelete = Array.from(selectedIds);
+            const result = await deleteMediaFiles(idsToDelete);
+
+            if (result.success) {
+                onDeleteComplete();
+                onClose();
+            } else {
+                setError(result.message);
+            }
+        } catch (err) {
+            setError("Failed to delete files");
+            console.error(err);
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    // Group episodes by season
+    const episodesBySeason = episodes.reduce((acc, ep) => {
+        const season = ep.season_number ?? 0;
+        if (!acc[season]) {
+            acc[season] = [];
+        }
+        acc[season].push(ep);
+        return acc;
+    }, {} as Record<number, EpisodeDeleteInfo[]>);
+
+    const sortedSeasons = Object.keys(episodesBySeason)
+        .map(Number)
+        .sort((a, b) => a - b);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-w-2xl bg-background/95 backdrop-blur-xl border-white/10">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-xl">
+                        <Trash2 className="w-5 h-5 text-red-500" />
+                        Delete Episodes - {seriesTitle}
+                    </DialogTitle>
+                    <DialogDescription className="text-muted-foreground">
+                        <span className="flex items-center gap-2 text-amber-500">
+                            <AlertTriangle className="w-4 h-4" />
+                            Warning: Files will be permanently deleted from your drive and cannot be recovered!
+                        </span>
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="flex items-center justify-between py-2 border-b border-white/10">
+                    <span className="text-sm text-muted-foreground">
+                        {selectedIds.size} of {episodes.length} selected
+                    </span>
+                    <div className="flex gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={selectAll}
+                            className="border-red-500/50 hover:bg-red-500/20 hover:text-red-400"
+                        >
+                            <Check className="w-4 h-4 mr-1" />
+                            Delete All
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={deselectAll}
+                            className="border-white/20 hover:bg-white/10"
+                        >
+                            <X className="w-4 h-4 mr-1" />
+                            Clear
+                        </Button>
+                    </div>
+                </div>
+
+                <ScrollArea className="h-[400px] pr-4">
+                    {isLoading ? (
+                        <div className="flex items-center justify-center h-full">
+                            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                        </div>
+                    ) : error && episodes.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full text-center">
+                            <AlertTriangle className="w-12 h-12 text-red-500 mb-2" />
+                            <p className="text-red-400">{error}</p>
+                        </div>
+                    ) : episodes.length === 0 ? (
+                        <div className="flex items-center justify-center h-full text-muted-foreground">
+                            No episodes found for this series.
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {sortedSeasons.map((season) => (
+                                <div key={season} className="space-y-2">
+                                    <h3 className="text-sm font-semibold text-primary/80 sticky top-0 bg-background/90 backdrop-blur-sm py-1">
+                                        Season {season}
+                                    </h3>
+                                    <AnimatePresence>
+                                        {episodesBySeason[season]
+                                            .sort((a, b) => (a.episode_number ?? 0) - (b.episode_number ?? 0))
+                                            .map((ep) => (
+                                                <motion.div
+                                                    key={ep.id}
+                                                    initial={{ opacity: 0, x: -10 }}
+                                                    animate={{ opacity: 1, x: 0 }}
+                                                    exit={{ opacity: 0, x: 10 }}
+                                                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer ${selectedIds.has(ep.id)
+                                                            ? "border-red-500/50 bg-red-500/10"
+                                                            : "border-white/10 hover:border-white/20 hover:bg-white/5"
+                                                        }`}
+                                                    onClick={() => toggleEpisode(ep.id)}
+                                                >
+                                                    <Checkbox
+                                                        checked={selectedIds.has(ep.id)}
+                                                        onCheckedChange={() => toggleEpisode(ep.id)}
+                                                        className={selectedIds.has(ep.id) ? "border-red-500 data-[state=checked]:bg-red-500" : ""}
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="font-medium truncate">
+                                                            E{String(ep.episode_number ?? 0).padStart(2, "0")} - {ep.title}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground truncate">
+                                                            {ep.file_path || "No file path"}
+                                                        </div>
+                                                    </div>
+                                                    {selectedIds.has(ep.id) && (
+                                                        <motion.div
+                                                            initial={{ scale: 0 }}
+                                                            animate={{ scale: 1 }}
+                                                            className="text-red-500"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </motion.div>
+                                                    )}
+                                                </motion.div>
+                                            ))}
+                                    </AnimatePresence>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </ScrollArea>
+
+                {error && episodes.length > 0 && (
+                    <div className="text-red-400 text-sm flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        {error}
+                    </div>
+                )}
+
+                <DialogFooter className="gap-2">
+                    <Button
+                        variant="outline"
+                        onClick={onClose}
+                        disabled={isDeleting}
+                        className="border-white/20"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        onClick={handleDelete}
+                        disabled={selectedIds.size === 0 || isDeleting}
+                        className="bg-red-600 hover:bg-red-700"
+                    >
+                        {isDeleting ? (
+                            <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Deleting...
+                            </>
+                        ) : (
+                            <>
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete {selectedIds.size} Episode{selectedIds.size !== 1 ? "s" : ""}
+                            </>
+                        )}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}

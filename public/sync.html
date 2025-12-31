@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync Progress</title>
+</head>
+
+<body>
+    <script>
+        // This page is loaded in a hidden iframe by the Tauri app
+        // It reads localStorage progress and posts it back to the parent
+
+        const STORAGE_KEY = 'slasshy_streaming_progress';
+
+        try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            const progress = stored ? JSON.parse(stored) : {};
+
+            // Send progress data to parent window (Tauri app)
+            if (window.parent !== window) {
+                window.parent.postMessage({
+                    type: 'slasshy_progress_sync',
+                    data: progress
+                }, '*');
+            }
+
+            console.log('[Sync] Sent progress data:', Object.keys(progress).length, 'items');
+        } catch (e) {
+            console.error('[Sync] Failed to read progress:', e);
+            if (window.parent !== window) {
+                window.parent.postMessage({
+                    type: 'slasshy_progress_sync',
+                    data: {},
+                    error: e.message
+                }, '*');
+            }
+        }
+    </script>
+</body>
+
+</html>

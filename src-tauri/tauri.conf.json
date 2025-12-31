@@ -1,0 +1,117 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:3000",
+    "distDir": "../dist",
+    "withGlobalTauri": false
+  },
+  "package": {
+    "productName": "Slasshy Media Indexer",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "dialog": {
+        "all": false,
+        "open": true,
+        "save": false
+      },
+      "protocol": {
+        "asset": true,
+        "assetScope": [
+          "**",
+          "$APPDATA/**",
+          "$RESOURCE/**",
+          "C:\\**",
+          "D:\\**",
+          "E:\\**",
+          "F:\\**",
+          "G:\\**",
+          "H:\\**",
+          "I:\\**",
+          "J:\\**",
+          "K:\\**",
+          "L:\\**",
+          "M:\\**",
+          "N:\\**",
+          "O:\\**",
+          "P:\\**",
+          "Q:\\**",
+          "R:\\**",
+          "S:\\**",
+          "T:\\**",
+          "U:\\**",
+          "V:\\**",
+          "W:\\**",
+          "X:\\**",
+          "Y:\\**",
+          "Z:\\**"
+        ]
+      },
+      "fs": {
+        "all": true,
+        "scope": [
+          "**/*"
+        ]
+      },
+      "http": {
+        "all": true,
+        "scope": [
+          "http://**",
+          "https://**"
+        ]
+      },
+      "shell": {
+        "all": false,
+        "open": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "category": "DeveloperTool",
+      "copyright": "",
+      "deb": {
+        "depends": []
+      },
+      "externalBin": [],
+      "icon": [
+        "icons/icon.png",
+        "icons/icon.ico"
+      ],
+      "identifier": "com.slasshy.desktop",
+      "longDescription": "",
+      "macOS": {
+        "entitlements": null,
+        "exceptionDomain": "",
+        "frameworks": [],
+        "providerShortName": null,
+        "signingIdentity": null
+      },
+      "resources": [],
+      "shortDescription": "",
+      "targets": "all",
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": ""
+      }
+    },
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: https: data:; media-src 'self' asset: blob: https:; style-src 'self' 'unsafe-inline'; frame-src https://player.videasy.net https://*.videasy.net; child-src https://player.videasy.net https://*.videasy.net; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss:"
+    },
+    "updater": {
+      "active": false
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 800,
+        "resizable": true,
+        "title": "Slasshy Media Indexer",
+        "width": 1200
+      }
+    ]
+  }
+}
