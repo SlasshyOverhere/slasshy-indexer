@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 
 use crate::database::get_config_path;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub mpv_path: Option<String>,
@@ -14,6 +14,24 @@ pub struct Config {
     pub media_folders: Vec<String>,
     #[serde(default)]
     pub tmdb_api_key: Option<String>,
+    #[serde(default = "default_file_watcher_enabled")]
+    pub file_watcher_enabled: bool,
+}
+
+fn default_file_watcher_enabled() -> bool {
+    true
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            mpv_path: None,
+            ffprobe_path: None,
+            media_folders: Vec::new(),
+            tmdb_api_key: None,
+            file_watcher_enabled: true,
+        }
+    }
 }
 
 pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {

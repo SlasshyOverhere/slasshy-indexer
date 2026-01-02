@@ -76,7 +76,7 @@ export function StreamView() {
         }
     };
 
-    // Open streaming URL in the in-app Videasy player with progress sync
+    // Open streaming URL in user's default browser
     const openInPlayer = useCallback(async (
         url: string,
         title: string,
@@ -99,7 +99,7 @@ export function StreamView() {
                 0  // duration - will be updated by player
             );
 
-            // Open in the in-app Videasy webview player
+            // Open in user's default browser
             await openVideasyPlayer(
                 url,
                 tmdbId,
@@ -111,8 +111,8 @@ export function StreamView() {
             );
 
             toast({
-                title: "Opening Player",
-                description: `Now streaming "${title}"`,
+                title: "Opening in Browser",
+                description: `Streaming "${title}" in your default browser`,
             });
 
             // Refresh recent streams

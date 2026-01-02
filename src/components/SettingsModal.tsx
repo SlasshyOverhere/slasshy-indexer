@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import {
   Plus, Trash2, MonitorPlay, FolderOpen,
-  AlertTriangle, Settings, Film, Key, Zap, Power, X, Save, RefreshCw, Sparkles
+  AlertTriangle, Settings, Film, Key, Zap, Power, X, Save, RefreshCw, Sparkles, Eye
 } from "lucide-react"
 import {
   Config, getConfig, saveConfig, scanLibrary, clearAllAppData
@@ -30,7 +30,8 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding }: Setti
     mpv_path: "",
     ffprobe_path: "",
     media_folders: [],
-    tmdb_api_key: ""
+    tmdb_api_key: "",
+    file_watcher_enabled: true
   })
   const [loading, setLoading] = useState(false)
   const [autoStart, setAutoStart] = useState(false)
@@ -80,7 +81,8 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding }: Setti
         mpv_path: data.mpv_path || "",
         ffprobe_path: data.ffprobe_path || "",
         media_folders: data.media_folders || [],
-        tmdb_api_key: data.tmdb_api_key || ""
+        tmdb_api_key: data.tmdb_api_key || "",
+        file_watcher_enabled: data.file_watcher_enabled ?? true
       })
     } catch (error) {
       console.error("Failed to load config", error)
@@ -272,6 +274,27 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding }: Setti
                           </div>
                         </div>
                         <Switch checked={autoStart} onCheckedChange={toggleAutoStart} />
+                      </div>
+                    </div>
+
+                    {/* File Watcher Toggle */}
+                    <div className="p-4 rounded-xl bg-card border border-border">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-green-500/10">
+                            <Eye className="w-5 h-5 text-green-500" />
+                          </div>
+                          <div>
+                            <Label className="text-base font-medium">Auto-detect New Files</Label>
+                            <p className="text-sm text-muted-foreground">
+                              Automatically scan for new media files in your folders
+                            </p>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={config.file_watcher_enabled ?? true}
+                          onCheckedChange={(checked) => setConfig({ ...config, file_watcher_enabled: checked })}
+                        />
                       </div>
                     </div>
 

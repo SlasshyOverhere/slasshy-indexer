@@ -31,6 +31,7 @@ pub struct AppState {
     pub config: Mutex<config::Config>,
     pub is_scanning: Arc<AtomicBool>,
     pub active_mpv_sessions: Mutex<HashMap<i64, MpvSession>>,
+    pub watcher_enabled: Arc<AtomicBool>,
 }
 
 // API Response types
@@ -413,6 +414,9 @@ async fn save_config(
     state: State<'_, AppState>,
     new_config: config::Config,
 ) -> Result<ApiResponse, String> {
+    // Update the watcher_enabled atomic flag immediately
+    state.watcher_enabled.store(new_config.file_watcher_enabled, Ordering::SeqCst);
+
     let mut config = state.config.lock().map_err(|e| e.to_string())?;
     *config = new_config.clone();
     config::save_config(&new_config).map_err(|e| e.to_string())?;
@@ -1440,325 +1444,33 @@ struct VideasyStorageItem {
     progress: Option<VideasyProgress>,
 }
 
-// Open Videasy in a webview window with progress sync
+// Open Videasy in the user's default browser
 #[tauri::command]
 async fn open_videasy_player(
     app_handle: tauri::AppHandle,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
     url: String,
     tmdb_id: String,
     media_type: String,
     title: String,
-    poster_path: Option<String>,
+    _poster_path: Option<String>,
     season: Option<i32>,
     episode: Option<i32>,
 ) -> Result<ApiResponse, String> {
-    use tauri::Manager;
+    println!("[VIDEASY] Opening in browser for: {} (tmdb_id: {})", title, tmdb_id);
 
-    println!("[VIDEASY] Opening player for: {} (tmdb_id: {})", title, tmdb_id);
+    // Open the URL directly in the user's default browser using Tauri's shell API
+    tauri::api::shell::open(&app_handle.shell_scope(), &url, None)
+        .map_err(|e| format!("Failed to open browser: {}", e))?;
 
-    // Get saved progress from database
-    let saved_progress = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
-        db.get_streaming_resume_info(&tmdb_id, &media_type, season, episode)
-            .map_err(|e| e.to_string())?
-    };
-
-    // Build the storage key for Videasy localStorage
-    let storage_key = if media_type == "movie" {
-        format!("movie-{}", tmdb_id)
-    } else {
-        format!("tv-{}-{}-{}", tmdb_id, season.unwrap_or(1), episode.unwrap_or(1))
-    };
-
-    // Build the injection script for saved progress
-    let inject_script = if let Some(progress) = saved_progress {
-        let storage_item = VideasyStorageItem {
-            poster: poster_path.clone().map(|p| format!("https://image.tmdb.org/t/p/w300{}", p)),
-            background: None,
-            id: tmdb_id.parse().unwrap_or(0),
-            media_type: media_type.clone(),
-            title: title.clone(),
-            progress: Some(VideasyProgress {
-                duration: progress.duration_seconds,
-                watched: progress.resume_position_seconds,
-            }),
-        };
-
-        let json = serde_json::to_string(&storage_item).unwrap_or_default();
-        format!(
-            r#"
-            (function() {{
-                try {{
-                    console.log('[Slasshy] Injecting saved progress for {}');
-                    localStorage.setItem('{}', '{}');
-                    console.log('[Slasshy] Progress injected successfully');
-                }} catch (e) {{
-                    console.error('[Slasshy] Failed to inject progress:', e);
-                }}
-            }})();
-            "#,
-            storage_key, storage_key, json.replace('\'', "\\'").replace('\n', "\\n")
-        )
-    } else {
-        String::new()
-    };
-
-    // Create the webview window
-    let window_label = format!("videasy-{}", tmdb_id);
-    let window_title = if media_type == "tv" {
+    let display_title = if media_type == "tv" {
         format!("{} - S{}E{}", title, season.unwrap_or(1), episode.unwrap_or(1))
     } else {
         title.clone()
     };
 
-    // Check if window already exists
-    if let Some(existing) = app_handle.get_window(&window_label) {
-        existing.set_focus().map_err(|e| e.to_string())?;
-        return Ok(ApiResponse {
-            message: "Player window already open".to_string(),
-        });
-    }
-
-    // Parse the URL
-    let parsed_url: url::Url = url.parse().map_err(|e| format!("Invalid URL: {}", e))?;
-
-    let window = tauri::WindowBuilder::new(
-        &app_handle,
-        &window_label,
-        tauri::WindowUrl::External(parsed_url)
-    )
-    .title(&window_title)
-    .inner_size(1280.0, 720.0)
-    .min_inner_size(800.0, 450.0)
-    .resizable(true)
-    .fullscreen(false)
-    .center()
-    .build()
-    .map_err(|e| e.to_string())?;
-
-    // Comprehensive popup blocker script
-    let popup_blocker = r#"
-        (function() {
-            'use strict';
-
-            // Block window.open completely
-            const noop = function() {
-                console.log('[Slasshy] Blocked window.open');
-                return null;
-            };
-            window.open = noop;
-
-            // Prevent overriding window.open
-            Object.defineProperty(window, 'open', {
-                value: noop,
-                writable: false,
-                configurable: false
-            });
-
-            // Block popups from iframes
-            try {
-                for (let i = 0; i < window.frames.length; i++) {
-                    try {
-                        window.frames[i].open = noop;
-                    } catch(e) {}
-                }
-            } catch(e) {}
-
-            // Block target="_blank" links and ad clicks
-            document.addEventListener('click', function(e) {
-                let target = e.target;
-                while (target && target.tagName !== 'A') {
-                    target = target.parentElement;
-                }
-                if (target) {
-                    const href = target.getAttribute('href') || '';
-                    const targetAttr = target.getAttribute('target');
-
-                    // Block external links that open in new tabs
-                    if (targetAttr === '_blank' || targetAttr === '_new') {
-                        if (!href.includes('videasy.net') && !href.includes('player.videasy')) {
-                            console.log('[Slasshy] Blocked external link:', href);
-                            e.preventDefault();
-                            e.stopPropagation();
-                            e.stopImmediatePropagation();
-                            return false;
-                        }
-                    }
-
-                    // Block common ad domains
-                    const adDomains = ['popads', 'popcash', 'propeller', 'exoclick', 'juicyads',
-                                       'trafficjunky', 'clickadu', 'adsterra', 'onclick', 'popunder'];
-                    if (adDomains.some(d => href.includes(d))) {
-                        console.log('[Slasshy] Blocked ad link:', href);
-                        e.preventDefault();
-                        e.stopPropagation();
-                        return false;
-                    }
-                }
-            }, true);
-
-            // Block mousedown/mouseup popup triggers
-            ['mousedown', 'mouseup', 'pointerdown', 'pointerup'].forEach(function(eventType) {
-                document.addEventListener(eventType, function(e) {
-                    const target = e.target;
-                    if (target.tagName === 'A' || target.closest('a')) {
-                        const link = target.tagName === 'A' ? target : target.closest('a');
-                        const href = link.getAttribute('href') || '';
-                        if (!href.includes('videasy') && (link.getAttribute('target') === '_blank')) {
-                            e.stopPropagation();
-                        }
-                    }
-                }, true);
-            });
-
-            console.log('[Slasshy] Popup blocker fully active');
-        })();
-    "#;
-
-    // Clone values for the threads
-    let window_for_progress = window.clone();
-    let storage_key_clone = storage_key.clone();
-    let tmdb_id_clone = tmdb_id.clone();
-    let media_type_clone = media_type.clone();
-    let title_clone = title.clone();
-    let poster_path_clone = poster_path.clone();
-    let db_path = database::get_database_path();
-    let season_clone = season;
-    let episode_clone = episode;
-    let window_title_clone = window_title.clone();
-
-    // Progress extraction and saving thread
-    std::thread::spawn(move || {
-        // Wait for page to load
-        std::thread::sleep(std::time::Duration::from_secs(2));
-
-        // Inject popup blocker
-        if let Err(e) = window_for_progress.eval(popup_blocker) {
-            println!("[VIDEASY] Failed to inject popup blocker: {}", e);
-        } else {
-            println!("[VIDEASY] Popup blocker injected");
-        }
-
-        // Inject saved progress
-        if !inject_script.is_empty() {
-            if let Err(e) = window_for_progress.eval(&inject_script) {
-                println!("[VIDEASY] Failed to inject progress: {}", e);
-            } else {
-                println!("[VIDEASY] Progress injected");
-            }
-        }
-
-        // Track progress using window title as communication channel
-        let mut last_progress_watched: f64 = 0.0;
-        let mut last_progress_duration: f64 = 0.0;
-        let original_title = window_title_clone;
-
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(10));
-
-            // Inject script that puts progress in window title temporarily
-            let extract_script = format!(r#"
-                (function() {{
-                    try {{
-                        // Re-block popups
-                        if (!window.__slasshyBlocked) {{
-                            window.__slasshyBlocked = true;
-                            window.open = function() {{ return null; }};
-                        }}
-
-                        const data = localStorage.getItem('{}');
-                        if (data) {{
-                            const parsed = JSON.parse(data);
-                            if (parsed.progress && parsed.progress.watched > 0) {{
-                                // Temporarily set title with progress data
-                                const watched = parsed.progress.watched.toFixed(2);
-                                const duration = parsed.progress.duration.toFixed(2);
-                                document.title = 'SLASSHY_PROGRESS:' + watched + ':' + duration;
-
-                                // Restore title after a short delay
-                                setTimeout(function() {{
-                                    document.title = '{}';
-                                }}, 200);
-                            }}
-                        }}
-                    }} catch (e) {{}}
-                }})();
-            "#, storage_key_clone, original_title.replace('\'', "\\'"));
-
-            match window_for_progress.eval(&extract_script) {
-                Ok(_) => {
-                    // Wait for title to be set
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-
-                    // Try to read the title
-                    if let Ok(title) = window_for_progress.title() {
-                        if title.starts_with("SLASSHY_PROGRESS:") {
-                            let parts: Vec<&str> = title.split(':').collect();
-                            if parts.len() >= 3 {
-                                if let (Ok(w), Ok(d)) = (parts[1].parse::<f64>(), parts[2].parse::<f64>()) {
-                                    last_progress_watched = w;
-                                    last_progress_duration = d;
-                                    println!("[VIDEASY] Progress extracted: {:.1}s / {:.1}s", w, d);
-
-                                    // Save to database periodically
-                                    if let Ok(db) = database::Database::new(&db_path) {
-                                        let poster_url = poster_path_clone.as_ref().map(|p| {
-                                            if p.starts_with("http") { p.clone() }
-                                            else { format!("https://image.tmdb.org/t/p/w342{}", p) }
-                                        });
-
-                                        let _ = db.save_streaming_progress(
-                                            &tmdb_id_clone,
-                                            &media_type_clone,
-                                            &title_clone,
-                                            poster_url.as_deref(),
-                                            season_clone,
-                                            episode_clone,
-                                            last_progress_watched,
-                                            last_progress_duration,
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(_) => {
-                    // Window is closed - save final progress
-                    println!("[VIDEASY] Window closed, saving final progress...");
-
-                    if last_progress_watched > 0.0 {
-                        if let Ok(db) = database::Database::new(&db_path) {
-                            let poster_url = poster_path_clone.as_ref().map(|p| {
-                                if p.starts_with("http") { p.clone() }
-                                else { format!("https://image.tmdb.org/t/p/w342{}", p) }
-                            });
-
-                            match db.save_streaming_progress(
-                                &tmdb_id_clone,
-                                &media_type_clone,
-                                &title_clone,
-                                poster_url.as_deref(),
-                                season_clone,
-                                episode_clone,
-                                last_progress_watched,
-                                last_progress_duration,
-                            ) {
-                                Ok(_) => println!("[VIDEASY] Final progress saved: {:.1}s / {:.1}s",
-                                                last_progress_watched, last_progress_duration),
-                                Err(e) => println!("[VIDEASY] Failed to save final progress: {}", e),
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-    });
-
     Ok(ApiResponse {
-        message: format!("Videasy player opened for: {}", title),
+        message: format!("Opening \"{}\" in browser", display_title),
     })
 }
 
@@ -1824,9 +1536,10 @@ fn main() {
     // Create app state
     let state = AppState {
         db: Mutex::new(db),
-        config: Mutex::new(config),
+        config: Mutex::new(config.clone()),
         is_scanning: Arc::new(AtomicBool::new(false)),
         active_mpv_sessions: Mutex::new(HashMap::new()),
+        watcher_enabled: Arc::new(AtomicBool::new(config.file_watcher_enabled)),
     };
 
     // Create system tray menu

@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 use tauri::Manager;
@@ -51,18 +53,25 @@ pub fn start_watcher(app_handle: tauri::AppHandle) {
     log_info!("║     STARTING MEDIA FOLDER TRACKER            ║");
     log_info!("╚══════════════════════════════════════════════╝");
 
-    // Get media folders from config
+    // Get config and check if watcher is enabled
     let state = app_handle.state::<AppState>();
-    let media_folders: Vec<String> = match state.config.lock() {
+    let (media_folders, watcher_enabled_flag): (Vec<String>, Arc<AtomicBool>) = match state.config.lock() {
         Ok(c) => {
             log_info!("Config loaded successfully");
-            c.media_folders.clone()
+            (c.media_folders.clone(), state.watcher_enabled.clone())
         }
         Err(e) => {
             log_error!("Failed to lock config: {}", e);
             return;
         }
     };
+
+    // Check if watcher is disabled in settings
+    if !watcher_enabled_flag.load(Ordering::SeqCst) {
+        log_info!("File watcher is DISABLED in settings");
+        log_info!("Enable it in Settings > General to auto-detect new files");
+        return;
+    }
 
     if media_folders.is_empty() {
         log_info!("No media folders configured");
@@ -80,7 +89,7 @@ pub fn start_watcher(app_handle: tauri::AppHandle) {
         .name("folder-tracker".into())
         .spawn(move || {
             log_info!("Tracker thread started");
-            run_tracker_loop(app_handle, media_folders);
+            run_tracker_loop(app_handle, media_folders, watcher_enabled_flag);
         });
 
     match handle {
@@ -89,9 +98,15 @@ pub fn start_watcher(app_handle: tauri::AppHandle) {
     }
 }
 
-fn run_tracker_loop(app_handle: tauri::AppHandle, media_folders: Vec<String>) {
+fn run_tracker_loop(app_handle: tauri::AppHandle, media_folders: Vec<String>, watcher_enabled: Arc<AtomicBool>) {
     // Initial scan after short delay (let app fully initialize)
     thread::sleep(Duration::from_secs(3));
+
+    // Check if watcher was disabled during initial delay
+    if !watcher_enabled.load(Ordering::SeqCst) {
+        log_info!("File watcher disabled during startup - stopping tracker");
+        return;
+    }
 
     println!("\n");
     log_info!("╔══════════════════════════════════════════════╗");
@@ -105,13 +120,19 @@ fn run_tracker_loop(app_handle: tauri::AppHandle, media_folders: Vec<String>) {
     let mut scan_count: u64 = 0;
 
     loop {
+        // Check if watcher is still enabled before each scan
+        if !watcher_enabled.load(Ordering::SeqCst) {
+            log_info!("━━━ File watcher DISABLED - stopping tracker ━━━");
+            break;
+        }
+
         scan_count += 1;
         log_info!("━━━ Scan #{} starting ━━━", scan_count);
 
         match perform_sync(&app_handle, &media_folders) {
-            Ok((added, removed)) => {
-                if added > 0 || removed > 0 {
-                    log_info!("Scan #{} complete: {} added, {} removed", scan_count, added, removed);
+            Ok(added) => {
+                if added > 0 {
+                    log_info!("Scan #{} complete: {} added", scan_count, added);
                 } else {
                     log_info!("Scan #{} complete: no changes", scan_count);
                 }
@@ -121,13 +142,19 @@ fn run_tracker_loop(app_handle: tauri::AppHandle, media_folders: Vec<String>) {
             }
         }
 
-        // Wait before next scan
-        thread::sleep(Duration::from_secs(SCAN_INTERVAL_SECS));
+        // Wait before next scan, but check enabled flag periodically
+        for _ in 0..SCAN_INTERVAL_SECS {
+            if !watcher_enabled.load(Ordering::SeqCst) {
+                log_info!("━━━ File watcher DISABLED - stopping tracker ━━━");
+                return;
+            }
+            thread::sleep(Duration::from_secs(1));
+        }
     }
 }
 
-/// Perform a full sync between disk and database
-fn perform_sync(app_handle: &tauri::AppHandle, media_folders: &[String]) -> Result<(usize, usize), String> {
+/// Perform a sync to add new files from disk to database (add-only, no removal)
+fn perform_sync(app_handle: &tauri::AppHandle, media_folders: &[String]) -> Result<usize, String> {
     let db_path = database::get_database_path();
     let image_cache_dir = database::get_image_cache_dir();
 
@@ -144,7 +171,7 @@ fn perform_sync(app_handle: &tauri::AppHandle, media_folders: &[String]) -> Resu
         .map_err(|e| format!("Failed to get DB files: {}", e))?;
     log_info!("Found {} files tracked in database", files_in_db.len());
 
-    // Create normalized sets for comparison (handles Windows path inconsistencies)
+    // Create normalized set for comparison (handles Windows path inconsistencies)
     let files_in_db_normalized: HashSet<String> = files_in_db
         .iter()
         .map(|p| normalize_path(p))
@@ -156,12 +183,6 @@ fn perform_sync(app_handle: &tauri::AppHandle, media_folders: &[String]) -> Resu
         .map(|p| (normalize_path(&p.to_string_lossy()), p))
         .collect();
 
-    // Map: normalized path -> original String (for DB files)
-    let db_paths_map: std::collections::HashMap<String, &String> = files_in_db
-        .iter()
-        .map(|p| (normalize_path(p), p))
-        .collect();
-
     // Step 3: Find new files (on disk but not in DB) - compare normalized paths
     let new_files: Vec<&PathBuf> = disk_paths_map
         .iter()
@@ -169,19 +190,9 @@ fn perform_sync(app_handle: &tauri::AppHandle, media_folders: &[String]) -> Resu
         .map(|(_, path)| *path)
         .collect();
 
-    // Step 4: Find removed files (in DB but not on disk)
-    let disk_normalized_set: HashSet<String> = disk_paths_map.keys().cloned().collect();
-
-    let removed_files: Vec<&String> = db_paths_map
-        .iter()
-        .filter(|(normalized, _)| !disk_normalized_set.contains(*normalized))
-        .map(|(_, path)| *path)
-        .collect();
-
-    log_info!("Changes: {} new, {} removed", new_files.len(), removed_files.len());
+    log_info!("Found {} new files to index", new_files.len());
 
     let mut added_count = 0;
-    let mut removed_count = 0;
 
     // Get config for API key
     let state = app_handle.state::<AppState>();
@@ -190,7 +201,7 @@ fn perform_sync(app_handle: &tauri::AppHandle, media_folders: &[String]) -> Resu
         Err(_) => String::new(),
     };
 
-    // Step 5: Index new files
+    // Step 4: Index new files
     for path in &new_files {
         let filename = path.file_name()
             .and_then(|n| n.to_str())
@@ -206,34 +217,7 @@ fn perform_sync(app_handle: &tauri::AppHandle, media_folders: &[String]) -> Resu
         }
     }
 
-    // Step 6: Remove deleted files
-    for file_path in &removed_files {
-        let filename = Path::new(file_path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown");
-
-        log_action!("- REMOVED: {}", filename);
-
-        if remove_file(&db, file_path, &image_cache_dir) {
-            removed_count += 1;
-
-            // Notify frontend
-            notify_frontend(app_handle, "removed", filename);
-        }
-    }
-
-    // Step 7: Cleanup empty TV series
-    if removed_count > 0 {
-        if let Ok(removed_series) = db.cleanup_empty_series() {
-            for (series_id, series_poster) in &removed_series {
-                log_action!("- Removed empty series (ID: {})", series_id);
-                cleanup_image(&image_cache_dir, series_poster);
-            }
-        }
-    }
-
-    Ok((added_count, removed_count))
+    Ok(added_count)
 }
 
 /// Scan all media folders and return all video file paths
@@ -307,38 +291,10 @@ fn index_file(db: &database::Database, path: &PathBuf, api_key: &str, image_cach
     true
 }
 
-/// Remove a file from database and cleanup images
-fn remove_file(db: &database::Database, file_path: &str, image_cache_dir: &str) -> bool {
-    match db.remove_media_by_file_path(file_path) {
-        Ok(Some((_id, title, poster_path, still_path))) => {
-            log_info!("  Removed from DB: \"{}\"", title);
-
-            // Cleanup images
-            cleanup_image(image_cache_dir, &poster_path);
-            cleanup_image(image_cache_dir, &still_path);
-
-            true
-        }
-        Ok(None) => {
-            // Not in database, that's fine
-            true
-        }
-        Err(e) => {
-            log_error!("  Failed to remove from DB: {}", e);
-            false
-        }
-    }
-}
-
-/// Notify frontend of changes and send Windows toast notification
-fn notify_frontend(app_handle: &tauri::AppHandle, change_type: &str, title: &str) {
-    // Send Windows toast notification
-    let notification_title = if change_type == "added" { "Media Added" } else { "Media Removed" };
-    let notification_body = if change_type == "added" {
-        format!("Indexed: {}", title)
-    } else {
-        format!("Removed: {}", title)
-    };
+/// Notify frontend of new media and send Windows toast notification
+fn notify_frontend(app_handle: &tauri::AppHandle, _change_type: &str, title: &str) {
+    let notification_title = "Media Added";
+    let notification_body = format!("Indexed: {}", title);
 
     // Send Windows notification
     if let Err(e) = Notification::new()
@@ -356,37 +312,14 @@ fn notify_frontend(app_handle: &tauri::AppHandle, change_type: &str, title: &str
     // Also notify frontend (in-app notification)
     if let Some(window) = app_handle.get_window("main") {
         let _ = window.emit("library-updated", serde_json::json!({
-            "type": change_type,
+            "type": "added",
             "title": title,
         }));
 
-        let notification_type = if change_type == "added" { "success" } else { "info" };
-
         let _ = window.emit("notification", serde_json::json!({
-            "type": notification_type,
+            "type": "success",
             "title": notification_title,
             "message": notification_body
         }));
-    }
-}
-
-/// Cleanup cached image file
-fn cleanup_image(image_cache_dir: &str, image_path: &Option<String>) {
-    if let Some(path) = image_path {
-        let full_path = if path.starts_with("image_cache/") {
-            let filename = path.strip_prefix("image_cache/").unwrap_or(path);
-            Path::new(image_cache_dir).join(filename)
-        } else if path.starts_with("image_cache\\") {
-            let filename = path.strip_prefix("image_cache\\").unwrap_or(path);
-            Path::new(image_cache_dir).join(filename)
-        } else {
-            Path::new(image_cache_dir).join(path)
-        };
-
-        if full_path.exists() {
-            if let Err(e) = std::fs::remove_file(&full_path) {
-                log_error!("Failed to delete image: {}", e);
-            }
-        }
     }
 }

@@ -26,6 +26,7 @@ export interface Config {
     ffprobe_path?: string;
     media_folders: string[];
     tmdb_api_key?: string;
+    file_watcher_enabled?: boolean;
 }
 
 export interface ResumeInfo {

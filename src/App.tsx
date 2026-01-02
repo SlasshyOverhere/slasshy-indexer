@@ -517,7 +517,7 @@ function App() {
         item.season || undefined,
         item.episode || undefined
       )
-      toast({ title: "Opening Player", description: `Now streaming "${displayTitle}"` })
+      toast({ title: "Opening in Browser", description: `Streaming "${displayTitle}" in your default browser` })
     } catch (error) {
       toast({ title: "Failed to Open Player", description: "Could not open the streaming player", variant: "destructive" })
     }
