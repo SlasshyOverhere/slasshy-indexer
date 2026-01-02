@@ -499,19 +499,6 @@ function App() {
     toast({ title: "Theme Locked", description: "Dark mode is optimized for this interface." })
   }
 
-  const renderViewTitle = () => {
-    switch (view) {
-      case 'home': return 'Home'
-      case 'movies': return 'Movies'
-      case 'tv': return 'TV Shows'
-      case 'stream': return 'Stream'
-      case 'history': return 'History'
-      case 'stats': return 'Statistics'
-      case 'episodes': return selectedShow?.title || 'Episodes'
-      default: return ''
-    }
-  }
-
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden bg-gradient-mesh">
       {/* Background decorative orbs */}
@@ -540,69 +527,72 @@ function App() {
       />
 
       <main className="flex-1 flex flex-col min-w-0 relative z-10 overflow-hidden">
-        {/* Header */}
-        <header className="px-8 py-5 flex items-center justify-between gap-4 sticky top-0 z-40">
-          {/* Glassmorphism header background */}
-          <div className="absolute inset-0 bg-background/70 backdrop-blur-2xl border-b border-white/[0.06] z-[-1]" />
-
-          <div className="flex items-center gap-5">
+        {/* Floating Scan Progress Indicator */}
+        <AnimatePresence>
+          {isScanning && scanProgress && (
             <motion.div
-              key={view}
-              initial={{ opacity: 0, x: -15 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="flex items-center gap-4"
+              initial={{ opacity: 0, y: -20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.9 }}
+              className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-2.5 rounded-full bg-card/90 backdrop-blur-xl border border-primary/30 shadow-glow"
             >
-              <h1 className="text-2xl font-bold text-foreground tracking-tight">
-                {renderViewTitle()}
-              </h1>
+              <div className="relative">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <div className="absolute inset-0 rounded-full bg-primary/40 blur-md animate-pulse" />
+              </div>
+              <span className="text-primary text-sm font-semibold">
+                Scanning {scanProgress.current}/{scanProgress.total}
+              </span>
             </motion.div>
+          )}
+        </AnimatePresence>
 
-            {isScanning && scanProgress && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, x: -10 }}
-                animate={{ opacity: 1, scale: 1, x: 0 }}
-                className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-primary/10 border border-primary/25 shadow-glow-sm"
-              >
-                <div className="relative">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  <div className="absolute inset-0 rounded-full bg-primary/40 blur-md animate-pulse" />
-                </div>
-                <span className="text-primary text-sm font-semibold">
-                  Scanning {scanProgress.current}/{scanProgress.total}
-                </span>
-              </motion.div>
-            )}
-          </div>
-
-          {/* Controls */}
-          {(view === 'movies' || view === 'tv' || view === 'history') && (
+        {/* Floating Search Box for Movies/TV */}
+        <AnimatePresence>
+          {(view === 'movies' || view === 'tv') && (
             <motion.div
-              initial={{ opacity: 0, x: 15 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3 }}
-              className="flex items-center gap-4"
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className="fixed top-4 right-4 z-[100] flex items-center gap-3"
             >
-              {/* Search */}
-              <div className="group relative w-80">
-                <input
-                  type="text"
-                  placeholder="Search your library..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-11 pr-4 py-2.5 bg-card/60 backdrop-blur-sm border border-white/[0.08] rounded-xl text-sm font-medium focus:outline-none focus:bg-card/80 focus:border-primary/40 focus:shadow-glow-sm transition-all duration-300 placeholder:text-muted-foreground/60"
+              {/* Search Input */}
+              <div className="group relative">
+                <motion.div
+                  className="absolute -inset-0.5 bg-gradient-to-r from-primary/20 to-accent/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-300"
                 />
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors duration-200" />
+                <div className="relative flex items-center bg-card/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-lg overflow-hidden">
+                  <Search className="w-4 h-4 text-muted-foreground ml-3" />
+                  <input
+                    type="text"
+                    placeholder={`Search ${view === 'movies' ? 'movies' : 'TV shows'}...`}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-48 md:w-64 bg-transparent border-none text-sm px-3 py-2.5 focus:outline-none text-white placeholder:text-muted-foreground/60 font-medium"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="p-1.5 hover:bg-white/10 rounded-full transition-colors mr-2"
+                    >
+                      <X className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* View Mode Toggle */}
-              <div className="flex p-1.5 rounded-xl bg-card/60 backdrop-blur-sm border border-white/[0.08]">
+              <motion.div
+                className="flex p-1 rounded-xl bg-card/90 backdrop-blur-xl border border-white/10 shadow-lg"
+                whileHover={{ scale: 1.02 }}
+              >
                 <motion.button
                   onClick={() => setViewMode('grid')}
                   whileTap={{ scale: 0.95 }}
-                  className={`p-2.5 rounded-lg transition-all duration-200 ${viewMode === 'grid'
-                    ? 'bg-primary/15 text-primary shadow-sm border border-primary/20'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
+                  className={`p-2 rounded-lg transition-all duration-200 ${viewMode === 'grid'
+                    ? 'bg-primary/20 text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
                   <LayoutGrid className="w-4 h-4" />
@@ -610,55 +600,73 @@ function App() {
                 <motion.button
                   onClick={() => setViewMode('list')}
                   whileTap={{ scale: 0.95 }}
-                  className={`p-2.5 rounded-lg transition-all duration-200 ${viewMode === 'list'
-                    ? 'bg-primary/15 text-primary shadow-sm border border-primary/20'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
+                  className={`p-2 rounded-lg transition-all duration-200 ${viewMode === 'list'
+                    ? 'bg-primary/20 text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
                   <List className="w-4 h-4" />
                 </motion.button>
-              </div>
+              </motion.div>
             </motion.div>
           )}
+        </AnimatePresence>
 
-          {/* History tabs */}
+        {/* Floating History Tabs */}
+        <AnimatePresence>
           {view === 'history' && (
-            <div className="flex items-center gap-3">
-              <div className="flex p-1 rounded-xl bg-muted/30 border border-border/30">
-                <button
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3"
+            >
+              {/* Tab Pills */}
+              <div className="flex p-1 rounded-full bg-card/90 backdrop-blur-xl border border-white/10 shadow-lg">
+                <motion.button
                   onClick={() => setHistoryTab('local')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${historyTab === 'local'
-                    ? 'bg-background text-foreground shadow-sm'
+                  whileTap={{ scale: 0.95 }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${historyTab === 'local'
+                    ? 'bg-primary text-white shadow-glow-sm'
                     : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
                   <Film className="w-4 h-4" />
-                  Local ({items.length})
-                </button>
-                <button
+                  <span>Local</span>
+                  <span className="text-xs opacity-70">({items.length})</span>
+                </motion.button>
+                <motion.button
                   onClick={() => setHistoryTab('streaming')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${historyTab === 'streaming'
-                    ? 'bg-background text-foreground shadow-sm'
+                  whileTap={{ scale: 0.95 }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${historyTab === 'streaming'
+                    ? 'bg-accent text-white shadow-glow-sm'
                     : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
-                  <Tv className="w-4 h-4" />
-                  Streaming ({streamingHistoryItems.length})
-                </button>
+                  <Globe className="w-4 h-4" />
+                  <span>Stream</span>
+                  <span className="text-xs opacity-70">({streamingHistoryItems.length})</span>
+                </motion.button>
               </div>
 
+              {/* Clear Button */}
               {((historyTab === 'local' && items.length > 0) || (historyTab === 'streaming' && streamingHistoryItems.length > 0)) && (
-                <button
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
                   onClick={historyTab === 'local' ? handleClearAllHistory : handleClearAllStreamingHistory}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-200"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="p-2.5 rounded-full bg-card/90 backdrop-blur-xl border border-white/10 text-muted-foreground hover:text-destructive hover:border-destructive/30 shadow-lg transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
-                  <span>Clear</span>
-                </button>
+                </motion.button>
               )}
-            </div>
+            </motion.div>
           )}
-        </header>
+        </AnimatePresence>
 
         {/* Content */}
         <ScrollArea className="flex-1">
@@ -1181,6 +1189,7 @@ function App() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
+                  className="pt-14"
                 >
                   {historyTab === 'local' ? (
                     <div className="grid-media">
@@ -1322,6 +1331,7 @@ function App() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
+                  className="pt-14"
                 >
                   <div className="grid-media">
                     {items.map((item, index) => (

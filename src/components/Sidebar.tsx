@@ -21,6 +21,19 @@ interface SidebarProps {
   } | null
 }
 
+// Smooth spring config for natural feel
+const springConfig = {
+  type: "spring" as const,
+  stiffness: 400,
+  damping: 30,
+}
+
+const smoothTransition = {
+  type: "spring" as const,
+  stiffness: 300,
+  damping: 25,
+}
+
 export function Sidebar({
   className,
   currentView,
@@ -31,12 +44,16 @@ export function Sidebar({
 }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth < 1024) {
+      if (window.innerWidth < 800) {
         setIsCollapsed(true);
-        setSidebarWidth(80);
+        setSidebarWidth(72);
+      } else if (window.innerWidth < 1100) {
+        setIsCollapsed(false);
+        setSidebarWidth(220);
       } else {
         setIsCollapsed(false);
         setSidebarWidth(260);
@@ -49,17 +66,18 @@ export function Sidebar({
   }, []);
 
   const menuItems = [
-    { id: "home", label: "Home", icon: Home, gradient: "from-violet-500 to-purple-600" },
-    { id: "movies", label: "Movies", icon: Film, gradient: "from-pink-500 to-rose-500" },
-    { id: "tv", label: "TV Shows", icon: Tv, gradient: "from-blue-500 to-cyan-500" },
-    { id: "stream", label: "Discover", icon: Globe, gradient: "from-emerald-500 to-teal-500" },
-    { id: "history", label: "History", icon: History, gradient: "from-amber-500 to-orange-500" },
+    { id: "home", label: "Home", icon: Home, color: "#8B5CF6" },
+    { id: "movies", label: "Movies", icon: Film, color: "#EC4899" },
+    { id: "tv", label: "TV Shows", icon: Tv, color: "#06B6D4" },
+    { id: "stream", label: "Discover", icon: Globe, color: "#10B981" },
+    { id: "history", label: "History", icon: History, color: "#F59E0B" },
   ];
 
   return (
     <motion.aside
+      initial={false}
       animate={{ width: sidebarWidth }}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ ...smoothTransition, duration: 0.3 }}
       className={cn(
         "h-screen flex flex-col relative z-50",
         "bg-gradient-to-b from-card/90 via-background/95 to-background",
@@ -69,44 +87,70 @@ export function Sidebar({
     >
       {/* Decorative gradient blob */}
       <div className="absolute top-0 left-0 w-full h-48 pointer-events-none overflow-hidden">
-        <div className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-primary/20 blur-[80px]" />
+        <motion.div
+          className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-primary/20 blur-[80px]"
+          animate={{
+            scale: [1, 1.1, 1],
+            opacity: [0.2, 0.3, 0.2]
+          }}
+          transition={{
+            duration: 4,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        />
       </div>
 
       {/* Logo Section */}
       <motion.div
+        layout
+        transition={smoothTransition}
         className={cn(
-          "relative z-10 flex items-center gap-3.5 px-6 py-7",
-          isCollapsed && "justify-center px-0"
+          "relative z-10 flex items-center gap-3.5 py-6",
+          isCollapsed ? "justify-center px-0" : "px-5"
         )}
       >
         <motion.div
-          whileHover={{ scale: 1.08, rotate: 5 }}
+          whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.95 }}
+          transition={springConfig}
           className="relative group cursor-pointer"
         >
           {/* Glow effect */}
-          <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary to-accent opacity-50 blur-lg group-hover:opacity-80 transition-opacity duration-300" />
+          <motion.div
+            className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary to-accent blur-lg"
+            initial={{ opacity: 0.4 }}
+            whileHover={{ opacity: 0.7, scale: 1.2 }}
+            transition={{ duration: 0.3 }}
+          />
 
           {/* Logo container */}
-          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary/90 to-violet-600 shadow-lg border border-white/20">
+          <motion.div
+            className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary/90 to-violet-600 shadow-lg border border-white/20"
+          >
             <Play className="w-4 h-4 text-white fill-white ml-0.5 drop-shadow-lg" />
-          </div>
+          </motion.div>
         </motion.div>
 
         <AnimatePresence mode="wait">
           {!isCollapsed && (
             <motion.div
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.2 }}
-              className="flex flex-col"
+              initial={{ opacity: 0, x: -15, filter: "blur(4px)" }}
+              animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+              exit={{ opacity: 0, x: -10, filter: "blur(4px)" }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="flex flex-col overflow-hidden"
             >
               <div className="flex items-center gap-1.5">
                 <h1 className="text-base font-bold tracking-wide text-foreground">
                   Slasshy
                 </h1>
-                <Sparkles className="w-3.5 h-3.5 text-primary animate-pulse" />
+                <motion.div
+                  animate={{ rotate: [0, 15, -15, 0] }}
+                  transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                </motion.div>
               </div>
               <span className="text-[10px] text-muted-foreground font-medium tracking-wider uppercase">
                 Media Center
@@ -117,103 +161,170 @@ export function Sidebar({
       </motion.div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 space-y-1.5 overflow-y-auto py-4">
-        {!isCollapsed && (
-          <div className="px-3 py-2 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.15em]">
-            Navigation
-          </div>
-        )}
-
-        {menuItems.map((item, index) => {
-          const isActive = currentView === item.id;
-          return (
+      <nav className="flex-1 px-2.5 overflow-y-auto py-3">
+        <AnimatePresence>
+          {!isCollapsed && (
             <motion.div
-              key={item.id}
-              className="relative"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05, duration: 0.3 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="px-3 py-2 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.15em]"
             >
-              <motion.button
-                onClick={() => setView(item.id)}
-                whileHover={{ x: 3 }}
-                whileTap={{ scale: 0.98 }}
-                className={cn(
-                  "relative w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-sm font-medium",
-                  "transition-all duration-300 ease-out",
-                  isCollapsed && "justify-center px-0",
-                  isActive
-                    ? "bg-gradient-to-r from-primary/15 to-primary/5 text-white shadow-lg border border-primary/20"
-                    : "text-muted-foreground hover:text-white hover:bg-white/[0.04]"
-                )}
-              >
-                {/* Active background glow */}
-                {isActive && (
-                  <motion.div
-                    layoutId="activeGlow"
-                    className="absolute inset-0 rounded-xl bg-primary/10 blur-xl opacity-50"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-
-                {/* Active indicator line */}
-                {isActive && (
-                  <motion.div
-                    layoutId="activeIndicator"
-                    className={cn(
-                      "absolute left-0 w-1 bg-gradient-to-b from-primary to-accent rounded-r-full shadow-glow",
-                      isCollapsed ? "h-8 top-1/2 -translate-y-1/2" : "h-6 top-1/2 -translate-y-1/2"
-                    )}
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-
-                {/* Icon with gradient background on active */}
-                <div className={cn(
-                  "relative flex items-center justify-center",
-                  isActive && "p-2 rounded-lg bg-gradient-to-br",
-                  isActive && item.gradient
-                )}>
-                  <item.icon className={cn(
-                    "w-[18px] h-[18px] transition-all duration-300",
-                    isActive ? "text-white drop-shadow-lg" : "text-muted-foreground group-hover:text-white"
-                  )} />
-                </div>
-
-                {!isCollapsed && (
-                  <span className="relative z-10 truncate font-medium">
-                    {item.label}
-                  </span>
-                )}
-              </motion.button>
-
-              {/* Tooltip for collapsed mode */}
-              {isCollapsed && (
-                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-lg bg-card/95 backdrop-blur-xl border border-white/10 text-xs font-medium text-white opacity-0 group-hover:opacity-100 pointer-events-none shadow-xl transition-opacity whitespace-nowrap">
-                  {item.label}
-                </div>
-              )}
+              Navigation
             </motion.div>
-          );
-        })}
+          )}
+        </AnimatePresence>
+
+        <div className="space-y-1">
+          {menuItems.map((item, index) => {
+            const isActive = currentView === item.id;
+            const isHovered = hoveredItem === item.id;
+
+            return (
+              <motion.div
+                key={item.id}
+                className="relative"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{
+                  delay: index * 0.05,
+                  duration: 0.4,
+                  ease: [0.25, 0.46, 0.45, 0.94]
+                }}
+                onHoverStart={() => setHoveredItem(item.id)}
+                onHoverEnd={() => setHoveredItem(null)}
+              >
+                <motion.button
+                  onClick={() => setView(item.id)}
+                  whileTap={{ scale: 0.97 }}
+                  transition={springConfig}
+                  className={cn(
+                    "relative w-full flex items-center gap-3 rounded-xl text-sm font-medium overflow-hidden",
+                    isCollapsed ? "justify-center p-3" : "px-3 py-2.5",
+                    "transition-colors duration-200",
+                    isActive
+                      ? "text-white"
+                      : "text-muted-foreground hover:text-white"
+                  )}
+                >
+                  {/* Background highlight */}
+                  <motion.div
+                    className="absolute inset-0 rounded-xl"
+                    initial={false}
+                    animate={{
+                      backgroundColor: isActive
+                        ? `${item.color}20`
+                        : isHovered
+                          ? "rgba(255,255,255,0.04)"
+                          : "rgba(255,255,255,0)",
+                      borderColor: isActive ? `${item.color}40` : "transparent",
+                    }}
+                    style={{ borderWidth: 1, borderStyle: "solid" }}
+                    transition={{ duration: 0.2 }}
+                  />
+
+                  {/* Active indicator line */}
+                  <motion.div
+                    className="absolute left-0 top-1/2 w-[3px] rounded-r-full"
+                    initial={false}
+                    animate={{
+                      height: isActive ? (isCollapsed ? 28 : 22) : 0,
+                      y: "-50%",
+                      backgroundColor: item.color,
+                      boxShadow: isActive ? `0 0 12px ${item.color}` : "none",
+                    }}
+                    transition={springConfig}
+                  />
+
+                  {/* Icon container */}
+                  <motion.div
+                    className="relative z-10 flex items-center justify-center"
+                    initial={false}
+                    animate={{
+                      scale: isActive ? 1 : (isHovered ? 1.1 : 1),
+                    }}
+                    transition={springConfig}
+                  >
+                    <motion.div
+                      className="p-1.5 rounded-lg"
+                      initial={false}
+                      animate={{
+                        backgroundColor: isActive ? item.color : "transparent",
+                        boxShadow: isActive ? `0 4px 12px ${item.color}50` : "none",
+                      }}
+                      transition={{ duration: 0.25 }}
+                    >
+                      <item.icon
+                        className="w-[18px] h-[18px]"
+                        style={{
+                          color: isActive ? "white" : (isHovered ? item.color : undefined),
+                          transition: "color 0.2s ease"
+                        }}
+                      />
+                    </motion.div>
+                  </motion.div>
+
+                  {/* Label */}
+                  <AnimatePresence mode="wait">
+                    {!isCollapsed && (
+                      <motion.span
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -10 }}
+                        transition={{ duration: 0.2 }}
+                        className="relative z-10 truncate font-medium"
+                      >
+                        {item.label}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </motion.button>
+
+                {/* Tooltip for collapsed mode */}
+                <AnimatePresence>
+                  {isCollapsed && isHovered && (
+                    <motion.div
+                      initial={{ opacity: 0, x: -8, scale: 0.95 }}
+                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      exit={{ opacity: 0, x: -8, scale: 0.95 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-2 rounded-lg bg-card/95 backdrop-blur-xl border border-white/10 text-xs font-medium text-white shadow-xl whitespace-nowrap z-50"
+                      style={{
+                        boxShadow: `0 4px 20px rgba(0,0,0,0.3), 0 0 0 1px ${item.color}20`
+                      }}
+                    >
+                      <span style={{ color: item.color }}>{item.label}</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })}
+        </div>
       </nav>
 
       {/* Bottom Section */}
-      <div className={cn(
-        "relative z-10 px-3 py-5 space-y-2",
-        "border-t border-white/[0.06]",
-        "bg-gradient-to-t from-card/50 to-transparent"
-      )}>
+      <motion.div
+        layout
+        transition={smoothTransition}
+        className={cn(
+          "relative z-10 py-4 space-y-2",
+          "border-t border-white/[0.06]",
+          "bg-gradient-to-t from-card/50 to-transparent",
+          isCollapsed ? "px-2.5" : "px-3"
+        )}
+      >
         {/* Scan Button */}
         <motion.button
           onClick={onScan}
           disabled={isScanning}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
+          transition={springConfig}
           className={cn(
-            "relative w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold overflow-hidden",
-            "transition-all duration-300",
-            isCollapsed && "justify-center px-0",
+            "relative w-full flex items-center gap-3 py-2.5 rounded-xl text-sm font-semibold overflow-hidden",
+            isCollapsed ? "justify-center px-0" : "px-3",
             isScanning
               ? "bg-primary/20 text-primary border border-primary/30"
               : "bg-gradient-to-r from-white/[0.06] to-white/[0.03] hover:from-white/10 hover:to-white/[0.05] border border-white/[0.08] text-muted-foreground hover:text-white"
@@ -221,19 +332,36 @@ export function Sidebar({
         >
           {/* Shimmer effect when scanning */}
           {isScanning && (
-            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/30 to-transparent"
+              animate={{ x: ["-100%", "100%"] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+            />
           )}
 
-          <RotateCw className={cn(
-            "w-4 h-4 flex-shrink-0",
-            isScanning && "animate-spin text-primary"
-          )} />
+          <motion.div
+            animate={isScanning ? { rotate: 360 } : { rotate: 0 }}
+            transition={isScanning ? { duration: 1, repeat: Infinity, ease: "linear" } : {}}
+          >
+            <RotateCw className={cn(
+              "w-4 h-4 flex-shrink-0",
+              isScanning && "text-primary"
+            )} />
+          </motion.div>
 
-          {!isCollapsed && (
-            <span className="relative z-10">
-              {isScanning ? "Scanning..." : "Update Library"}
-            </span>
-          )}
+          <AnimatePresence mode="wait">
+            {!isCollapsed && (
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="relative z-10"
+              >
+                {isScanning ? "Scanning..." : "Update Library"}
+              </motion.span>
+            )}
+          </AnimatePresence>
         </motion.button>
 
         {/* Settings Button */}
@@ -241,17 +369,35 @@ export function Sidebar({
           onClick={onOpenSettings}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
+          transition={springConfig}
           className={cn(
-            "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium",
+            "w-full flex items-center gap-3 py-2.5 rounded-xl text-sm font-medium",
             "text-muted-foreground hover:text-white",
-            "hover:bg-white/[0.04] transition-all duration-200",
-            isCollapsed && "justify-center px-0"
+            "hover:bg-white/[0.04] transition-colors duration-200",
+            isCollapsed ? "justify-center px-0" : "px-3"
           )}
         >
-          <Settings className="w-4 h-4 transition-transform duration-300 hover:rotate-90" />
-          {!isCollapsed && <span>Settings</span>}
+          <motion.div
+            whileHover={{ rotate: 90 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+          >
+            <Settings className="w-4 h-4" />
+          </motion.div>
+
+          <AnimatePresence mode="wait">
+            {!isCollapsed && (
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                Settings
+              </motion.span>
+            )}
+          </AnimatePresence>
         </motion.button>
-      </div>
+      </motion.div>
 
       {/* Bottom decorative gradient */}
       <div className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none bg-gradient-to-t from-primary/5 to-transparent" />
