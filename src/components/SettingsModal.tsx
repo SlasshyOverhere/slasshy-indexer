@@ -8,7 +8,7 @@ import {
   AlertTriangle, Settings, Film, Key, Zap, Power, X, Save, RefreshCw, Sparkles, Eye
 } from "lucide-react"
 import {
-  Config, getConfig, saveConfig, scanLibrary, clearAllAppData
+  Config, getConfig, saveConfig, scanLibrary, clearAllAppData, cleanupMissingMetadata
 } from "@/services/api"
 import { useToast } from "@/components/ui/use-toast"
 import { open as openDialog } from '@tauri-apps/api/dialog'
@@ -37,6 +37,7 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding }: Setti
   const [autoStart, setAutoStart] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [resetting, setResetting] = useState(false)
+  const [cleaningUp, setCleaningUp] = useState(false)
   const [activeSection, setActiveSection] = useState<SettingsSection>('general')
   const { toast } = useToast()
 
@@ -133,6 +134,29 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding }: Setti
       })
     } finally {
       setResetting(false)
+    }
+  }
+
+  const handleCleanupMissing = async () => {
+    setCleaningUp(true)
+    try {
+      const result = await cleanupMissingMetadata()
+      toast({
+        title: "Cleanup Complete",
+        description: result.message
+      })
+      if (result.removed_count > 0) {
+        window.location.reload()
+      }
+    } catch (error) {
+      console.error("Failed to cleanup missing metadata", error)
+      toast({
+        title: "Error",
+        description: "Failed to cleanup missing metadata",
+        variant: "destructive"
+      })
+    } finally {
+      setCleaningUp(false)
     }
   }
 
@@ -505,6 +529,34 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding }: Setti
                     <div>
                       <h3 className="text-lg font-semibold text-foreground mb-1">Advanced Settings</h3>
                       <p className="text-sm text-muted-foreground">Danger zone - proceed with caution</p>
+                    </div>
+
+                    {/* Cleanup Missing Metadata */}
+                    <div className="p-4 rounded-xl border border-orange-500/30 bg-orange-500/5 space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-orange-500/20">
+                          <Trash2 className="w-5 h-5 text-orange-500" />
+                        </div>
+                        <div>
+                          <Label className="text-base font-medium text-orange-500">Clean Up Missing Titles</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Remove orphaned metadata and posters
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        This will remove database entries and cached posters for movies and TV shows
+                        that no longer exist on disk. Useful for cleaning up after deleting files externally.
+                      </p>
+                      <Button
+                        variant="outline"
+                        onClick={handleCleanupMissing}
+                        className="w-full border-orange-500/30 hover:bg-orange-500/10"
+                        disabled={cleaningUp}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        {cleaningUp ? "Cleaning up..." : "Clean Up Missing Titles"}
+                      </Button>
                     </div>
 
                     {/* Reset App */}

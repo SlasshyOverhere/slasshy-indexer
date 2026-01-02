@@ -55,14 +55,15 @@ struct ScanProgressPayload {
 }
 
 /// Cleanup orphaned media entries (files that no longer exist on disk)
-fn cleanup_orphaned_media(db: &Database, image_cache_dir: &str) {
+/// Returns the number of removed entries
+pub fn cleanup_orphaned_media(db: &Database, image_cache_dir: &str) -> usize {
     println!("[CLEANUP] Checking for orphaned media entries...");
     
     let all_media = match db.get_all_media() {
         Ok(items) => items,
         Err(e) => {
             println!("[CLEANUP] Error getting media list: {}", e);
-            return;
+            return 0;
         }
     };
     
@@ -142,6 +143,8 @@ fn cleanup_orphaned_media(db: &Database, image_cache_dir: &str) {
     } else {
         println!("[CLEANUP] No orphaned entries found");
     }
+
+    removed_count
 }
 
 /// Recursively clean up orphaned images from image cache directory

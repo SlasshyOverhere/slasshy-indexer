@@ -201,6 +201,23 @@ export const clearAllAppData = async (): Promise<void> => {
     }
 };
 
+// Cleanup response type
+export interface CleanupResponse {
+    success: boolean;
+    removed_count: number;
+    message: string;
+}
+
+// Cleanup orphaned metadata - removes entries and posters for missing files
+export const cleanupMissingMetadata = async (): Promise<CleanupResponse> => {
+    try {
+        return await invoke<CleanupResponse>('cleanup_missing_metadata');
+    } catch (error) {
+        console.error('Failed to cleanup missing metadata:', error);
+        throw error;
+    }
+};
+
 // Delete response type
 export interface DeleteResponse {
     success: boolean;

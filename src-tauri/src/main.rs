@@ -236,6 +236,42 @@ async fn clear_all_app_data(
     })
 }
 
+// Response for cleanup operation
+#[derive(serde::Serialize)]
+struct CleanupResponse {
+    success: bool,
+    removed_count: usize,
+    message: String,
+}
+
+// Cleanup orphaned metadata - removes entries and posters for missing files
+#[tauri::command]
+async fn cleanup_missing_metadata(
+    state: State<'_, AppState>,
+) -> Result<CleanupResponse, String> {
+    println!("[CLEANUP] Starting cleanup of missing media metadata...");
+
+    let removed_count = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let image_cache_path = database::get_image_cache_dir();
+        media_manager::cleanup_orphaned_media(&db, &image_cache_path)
+    };
+
+    let message = if removed_count > 0 {
+        format!("Cleaned up {} orphaned entries and their posters", removed_count)
+    } else {
+        "No orphaned entries found. Your library is clean!".to_string()
+    };
+
+    println!("[CLEANUP] {}", message);
+
+    Ok(CleanupResponse {
+        success: true,
+        removed_count,
+        message,
+    })
+}
+
 // Response for delete operation
 #[derive(serde::Serialize)]
 struct DeleteResponse {
@@ -243,6 +279,54 @@ struct DeleteResponse {
     deleted_count: usize,
     failed_count: usize,
     message: String,
+}
+
+// Helper function to clean up empty parent directories after file deletion
+fn cleanup_empty_parent_dirs(file_paths: &[String]) {
+    use std::collections::HashSet;
+
+    // Collect unique parent directories from deleted files
+    let mut parent_dirs: HashSet<std::path::PathBuf> = HashSet::new();
+    for file_path in file_paths {
+        let path = std::path::Path::new(file_path);
+        if let Some(parent) = path.parent() {
+            parent_dirs.insert(parent.to_path_buf());
+        }
+    }
+
+    // Try to remove empty directories (and their parents if also empty)
+    for dir in parent_dirs {
+        let mut current_dir = Some(dir);
+        while let Some(dir_path) = current_dir {
+            // Only try to remove if the directory exists
+            if dir_path.exists() && dir_path.is_dir() {
+                // Check if directory is empty
+                match std::fs::read_dir(&dir_path) {
+                    Ok(mut entries) => {
+                        if entries.next().is_none() {
+                            // Directory is empty, try to remove it
+                            match std::fs::remove_dir(&dir_path) {
+                                Ok(_) => {
+                                    println!("[DELETE] Removed empty directory: {:?}", dir_path);
+                                    // Continue to check parent directory
+                                    current_dir = dir_path.parent().map(|p| p.to_path_buf());
+                                    continue;
+                                }
+                                Err(e) => {
+                                    println!("[DELETE] Failed to remove directory {:?}: {}", dir_path, e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("[DELETE] Failed to read directory {:?}: {}", dir_path, e);
+                    }
+                }
+            }
+            // Stop if directory not empty or doesn't exist
+            current_dir = None;
+        }
+    }
 }
 
 // Delete media files permanently from disk (bypasses recycle bin)
@@ -262,11 +346,12 @@ async fn delete_media_files(
         let db = state.db.lock().map_err(|e| e.to_string())?;
         db.delete_media_entries(&media_ids).map_err(|e| e.to_string())?
     };
-    
+
     let _total_files = file_paths.len();
     let mut deleted_count = 0;
     let mut failed_count = 0;
-    
+    let mut deleted_file_paths: Vec<String> = Vec::new();
+
     // Delete files from disk permanently
     for file_path in file_paths {
         let path = std::path::Path::new(&file_path);
@@ -274,6 +359,7 @@ async fn delete_media_files(
             match std::fs::remove_file(path) {
                 Ok(_) => {
                     println!("[DELETE] Successfully deleted: {}", file_path);
+                    deleted_file_paths.push(file_path);
                     deleted_count += 1;
                 }
                 Err(e) => {
@@ -283,10 +369,14 @@ async fn delete_media_files(
             }
         } else {
             println!("[DELETE] File not found (already deleted?): {}", file_path);
+            deleted_file_paths.push(file_path);
             deleted_count += 1; // Count as success since file doesn't exist
         }
     }
-    
+
+    // Clean up empty parent directories
+    cleanup_empty_parent_dirs(&deleted_file_paths);
+
     let message = if failed_count == 0 {
         format!("Successfully deleted {} file(s)", deleted_count)
     } else {
@@ -353,14 +443,15 @@ async fn delete_series(
     
     let mut total_deleted = 0;
     let mut total_failed = 0;
-    
+    let mut deleted_file_paths: Vec<String> = Vec::new();
+
     // Delete episodes first if requested
     if !episode_ids.is_empty() {
         let file_paths = {
             let db = state.db.lock().map_err(|e| e.to_string())?;
             db.delete_media_entries(&episode_ids).map_err(|e| e.to_string())?
         };
-        
+
         if delete_files {
             for file_path in file_paths {
                 let path = std::path::Path::new(&file_path);
@@ -368,6 +459,7 @@ async fn delete_series(
                     match std::fs::remove_file(path) {
                         Ok(_) => {
                             println!("[DELETE] Deleted episode file: {}", file_path);
+                            deleted_file_paths.push(file_path);
                             total_deleted += 1;
                         }
                         Err(e) => {
@@ -376,6 +468,7 @@ async fn delete_series(
                         }
                     }
                 } else {
+                    deleted_file_paths.push(file_path);
                     total_deleted += 1;
                 }
             }
@@ -383,7 +476,12 @@ async fn delete_series(
             total_deleted = episode_ids.len();
         }
     }
-    
+
+    // Clean up empty parent directories
+    if delete_files && !deleted_file_paths.is_empty() {
+        cleanup_empty_parent_dirs(&deleted_file_paths);
+    }
+
     // Delete the series entry itself
     {
         let db = state.db.lock().map_err(|e| e.to_string())?;
@@ -1694,6 +1792,7 @@ fn main() {
             clear_all_streaming_history,
             // App reset command
             clear_all_app_data,
+            cleanup_missing_metadata,
             // Other commands
             delete_media_files,
             delete_series,
