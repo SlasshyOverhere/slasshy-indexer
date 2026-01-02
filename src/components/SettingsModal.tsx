@@ -4,12 +4,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import {
-  Plus, Trash2, MonitorPlay, ExternalLink, HelpCircle, FolderOpen,
-  AlertTriangle, Settings, Film, Key, Zap, Power, X, Save, RefreshCw
+  Plus, Trash2, MonitorPlay, FolderOpen,
+  AlertTriangle, Settings, Film, Key, Zap, Power, X, Save, RefreshCw, Sparkles
 } from "lucide-react"
 import {
-  Config, getConfig, saveConfig, scanLibrary, getPlayerPreference,
-  setPlayerPreference, PlayerPreference, clearAllAppData
+  Config, getConfig, saveConfig, scanLibrary, clearAllAppData
 } from "@/services/api"
 import { useToast } from "@/components/ui/use-toast"
 import { open as openDialog } from '@tauri-apps/api/dialog'
@@ -21,18 +20,18 @@ import { cn } from "@/lib/utils"
 interface SettingsModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onRestartOnboarding?: () => void
 }
 
 type SettingsSection = 'general' | 'library' | 'player' | 'api' | 'danger'
 
-export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
+export function SettingsModal({ open, onOpenChange, onRestartOnboarding }: SettingsModalProps) {
   const [config, setConfig] = useState<Config>({
     mpv_path: "",
     ffprobe_path: "",
     media_folders: [],
     tmdb_api_key: ""
   })
-  const [playerPref, setPlayerPref] = useState<PlayerPreference>('ask')
   const [loading, setLoading] = useState(false)
   const [autoStart, setAutoStart] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -43,7 +42,6 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   useEffect(() => {
     if (open) {
       loadConfig()
-      setPlayerPref(getPlayerPreference())
       checkAutoStart()
       setActiveSection('general')
       setShowResetConfirm(false)
@@ -94,7 +92,6 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     setLoading(true)
     try {
       await saveConfig(config)
-      setPlayerPreference(playerPref)
       toast({ title: "Success", description: "Settings saved successfully" })
       onOpenChange(false)
     } catch (error) {
@@ -206,12 +203,6 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     { id: 'danger', label: 'Advanced', icon: <AlertTriangle className="w-4 h-4" /> },
   ]
 
-  const playerOptions: { value: PlayerPreference; label: string; description: string; icon: React.ReactNode }[] = [
-    { value: 'ask', label: 'Always Ask', description: 'Choose player each time', icon: <HelpCircle className="h-5 w-5" /> },
-    { value: 'mpv', label: 'MPV', description: 'External player (recommended)', icon: <ExternalLink className="h-5 w-5" /> },
-    { value: 'builtin', label: 'Built-in', description: 'In-app player', icon: <MonitorPlay className="h-5 w-5" /> },
-  ]
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl h-[80vh] p-0 gap-0 overflow-hidden">
@@ -281,6 +272,35 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                           </div>
                         </div>
                         <Switch checked={autoStart} onCheckedChange={toggleAutoStart} />
+                      </div>
+                    </div>
+
+                    {/* Onboarding Overview */}
+                    <div className="p-4 rounded-xl bg-card border border-border">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-accent/10">
+                            <Sparkles className="w-5 h-5 text-accent" />
+                          </div>
+                          <div>
+                            <Label className="text-base font-medium">Onboarding Overview</Label>
+                            <p className="text-sm text-muted-foreground">
+                              Experience the full app introduction again
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            onOpenChange(false)
+                            onRestartOnboarding?.()
+                          }}
+                          className="gap-2"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          Start Tour
+                        </Button>
                       </div>
                     </div>
                   </motion.div>
@@ -365,36 +385,6 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                     <div>
                       <h3 className="text-lg font-semibold text-foreground mb-1">Player Settings</h3>
                       <p className="text-sm text-muted-foreground">Configure video playback preferences</p>
-                    </div>
-
-                    {/* Default Player */}
-                    <div className="space-y-3">
-                      <Label className="text-sm font-medium">Default Player</Label>
-                      <div className="grid grid-cols-3 gap-3">
-                        {playerOptions.map((option) => (
-                          <button
-                            key={option.value}
-                            onClick={() => setPlayerPref(option.value)}
-                            className={cn(
-                              "p-4 rounded-xl border-2 transition-all duration-200 flex flex-col items-center gap-3 text-center",
-                              playerPref === option.value
-                                ? "border-primary bg-primary/10 text-primary"
-                                : "border-border hover:border-primary/50 hover:bg-muted/50"
-                            )}
-                          >
-                            <div className={cn(
-                              "p-3 rounded-lg",
-                              playerPref === option.value ? "bg-primary/20" : "bg-muted"
-                            )}>
-                              {option.icon}
-                            </div>
-                            <div>
-                              <div className="font-medium text-sm">{option.label}</div>
-                              <div className="text-xs text-muted-foreground">{option.description}</div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
                     </div>
 
                     {/* MPV Path */}

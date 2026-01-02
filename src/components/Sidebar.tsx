@@ -78,6 +78,7 @@ export function Sidebar({
       initial={false}
       animate={{ width: sidebarWidth }}
       transition={{ ...smoothTransition, duration: 0.3 }}
+      data-tour="sidebar"
       className={cn(
         "h-screen flex flex-col relative z-50",
         "bg-gradient-to-b from-card/90 via-background/95 to-background",
@@ -199,6 +200,7 @@ export function Sidebar({
                   onClick={() => setView(item.id)}
                   whileTap={{ scale: 0.97 }}
                   transition={springConfig}
+                  data-tour={`nav-${item.id}`}
                   className={cn(
                     "relative w-full flex items-center gap-3 rounded-xl text-sm font-medium overflow-hidden",
                     isCollapsed ? "justify-center p-3" : "px-3 py-2.5",
@@ -322,6 +324,7 @@ export function Sidebar({
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           transition={springConfig}
+          data-tour="scan-library-btn"
           className={cn(
             "relative w-full flex items-center gap-3 py-2.5 rounded-xl text-sm font-semibold overflow-hidden",
             isCollapsed ? "justify-center px-0" : "px-3",
@@ -370,6 +373,7 @@ export function Sidebar({
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           transition={springConfig}
+          data-tour="settings-btn"
           className={cn(
             "w-full flex items-center gap-3 py-2.5 rounded-xl text-sm font-medium",
             "text-muted-foreground hover:text-white",

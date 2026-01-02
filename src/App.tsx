@@ -10,6 +10,8 @@ import { PlayerModal } from '@/components/PlayerModal'
 import { VideoPlayer } from '@/components/VideoPlayer'
 import { ResumeDialog } from '@/components/ResumeDialog'
 import { DeleteEpisodesModal } from '@/components/DeleteEpisodesModal'
+import { OnboardingModal } from '@/components/OnboardingModal'
+import { MainAppTour } from '@/components/MainAppTour'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Toaster } from '@/components/ui/toaster'
 import {
@@ -31,6 +33,8 @@ import {
   removeFromStreamingHistory,
   clearAllStreamingHistory,
   openVideasyPlayer,
+  hasCompletedOnboarding,
+  completeOnboarding,
 } from '@/services/api'
 import { initAdBlocker } from '@/utils/adBlocker'
 import {
@@ -130,6 +134,41 @@ function App() {
   // Streaming resume dialog state
   const [streamingResumeDialogOpen, setStreamingResumeDialogOpen] = useState(false)
   const [streamingResumeData, setStreamingResumeData] = useState<StreamingHistoryItem | null>(null)
+
+  // Onboarding state
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [showMainAppTour, setShowMainAppTour] = useState(false)
+
+  // Check onboarding status on mount
+  useEffect(() => {
+    if (!hasCompletedOnboarding()) {
+      setShowOnboarding(true)
+    }
+  }, [])
+
+  const handleOnboardingComplete = () => {
+    completeOnboarding()
+    setShowOnboarding(false)
+    // Start the main app tour after onboarding modal
+    setTimeout(() => {
+      setShowMainAppTour(true)
+    }, 300)
+  }
+
+  const handleMainAppTourComplete = () => {
+    setShowMainAppTour(false)
+  }
+
+  const handleMainAppTourSkip = () => {
+    setShowMainAppTour(false)
+  }
+
+  const handleRestartOnboarding = () => {
+    // Small delay to let Settings modal close first
+    setTimeout(() => {
+      setShowOnboarding(true)
+    }, 300)
+  }
 
   // Listen for Tauri events
   useEffect(() => {
@@ -1379,7 +1418,30 @@ function App() {
       </main>
 
       {/* Modals */}
-      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <OnboardingModal
+        open={showOnboarding}
+        onComplete={handleOnboardingComplete}
+      />
+
+      {/* Main App Tour - shows after onboarding */}
+      <MainAppTour
+        isActive={showMainAppTour}
+        onComplete={handleMainAppTourComplete}
+        onSkip={handleMainAppTourSkip}
+        setView={(v) => {
+          setView(v)
+          setSelectedShow(null)
+          setSearchQuery('')
+          setHomeSearchQuery('')
+          setHomeSearchResults([])
+        }}
+      />
+
+      <SettingsModal
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onRestartOnboarding={handleRestartOnboarding}
+      />
       <FixMatchModal
         open={fixMatchOpen}
         onOpenChange={setFixMatchOpen}

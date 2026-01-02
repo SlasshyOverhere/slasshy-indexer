@@ -635,3 +635,36 @@ export const openVideasyPlayer = async (
     }
 };
 
+// ==================== ONBOARDING ====================
+
+const ONBOARDING_KEY = 'slasshy_onboarding_completed';
+const ONBOARDING_VERSION = '1'; // Increment to show onboarding again after major updates
+
+// Check if user has completed onboarding
+export const hasCompletedOnboarding = (): boolean => {
+    try {
+        const completed = localStorage.getItem(ONBOARDING_KEY);
+        return completed === ONBOARDING_VERSION;
+    } catch {
+        return false;
+    }
+};
+
+// Mark onboarding as complete
+export const completeOnboarding = (): void => {
+    try {
+        localStorage.setItem(ONBOARDING_KEY, ONBOARDING_VERSION);
+    } catch (error) {
+        console.error('Failed to save onboarding state:', error);
+    }
+};
+
+// Reset onboarding (for testing or after major updates)
+export const resetOnboarding = (): void => {
+    try {
+        localStorage.removeItem(ONBOARDING_KEY);
+    } catch (error) {
+        console.error('Failed to reset onboarding:', error);
+    }
+};
+
