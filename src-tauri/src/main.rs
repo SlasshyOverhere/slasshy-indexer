@@ -13,7 +13,7 @@ use tauri_plugin_autostart::MacosLauncher;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::HashMap;
-use tauri::{State, Window};
+use tauri::{State, Window, Manager, SystemTray, SystemTrayMenu, SystemTrayMenuItem, CustomMenuItem, SystemTrayEvent};
 use serde::Serialize;
 
 // MPV session info
@@ -1807,20 +1807,20 @@ fn main() {
     // Initialize paths
     let db_path = database::get_database_path();
     let image_cache_dir = database::get_image_cache_dir();
-    
+
     // Ensure directories exist
     if let Some(parent) = std::path::Path::new(&db_path).parent() {
         std::fs::create_dir_all(parent).ok();
     }
     std::fs::create_dir_all(&image_cache_dir).ok();
-    
+
     // Initialize database
     let db = database::Database::new(&db_path)
         .expect("Failed to initialize database");
-    
+
     // Load config
     let config = config::load_config().unwrap_or_default();
-    
+
     // Create app state
     let state = AppState {
         db: Mutex::new(db),
@@ -1828,8 +1828,45 @@ fn main() {
         is_scanning: Arc::new(AtomicBool::new(false)),
         active_mpv_sessions: Mutex::new(HashMap::new()),
     };
-    
+
+    // Create system tray menu
+    let show = CustomMenuItem::new("show".to_string(), "Show Slasshy");
+    let quit = CustomMenuItem::new("quit".to_string(), "Quit");
+    let tray_menu = SystemTrayMenu::new()
+        .add_item(show)
+        .add_native_item(SystemTrayMenuItem::Separator)
+        .add_item(quit);
+
+    let system_tray = SystemTray::new().with_menu(tray_menu);
+
     tauri::Builder::default()
+        .system_tray(system_tray)
+        .on_system_tray_event(|app, event| {
+            match event {
+                SystemTrayEvent::LeftClick { .. } => {
+                    // Show window on left click
+                    if let Some(window) = app.get_window("main") {
+                        window.show().ok();
+                        window.set_focus().ok();
+                    }
+                }
+                SystemTrayEvent::MenuItemClick { id, .. } => {
+                    match id.as_str() {
+                        "show" => {
+                            if let Some(window) = app.get_window("main") {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
+                        }
+                        "quit" => {
+                            std::process::exit(0);
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        })
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--flag1", "--flag2"])))
         .manage(state)
         .setup(|app| {
@@ -1841,10 +1878,9 @@ fn main() {
                     println!("[STARTUP] Warning: Failed to merge duplicates: {}", e);
                 }
             }
-            
+
             let app_handle = app.handle();
-            let mut watcher = watcher::MediaWatcher::new();
-            watcher.start(app_handle);
+            watcher::start_watcher(app_handle);
             Ok(())
         })
         .on_page_load(|window, payload| {
@@ -1852,7 +1888,7 @@ fn main() {
             // This runs at the webview level and can intercept iframe popups
             let url = payload.url();
             println!("[PageLoad] URL: {}", url);
-            
+
             // Inject comprehensive popup blocking script
             let popup_block_script = r#"
                 (function() {
@@ -1862,7 +1898,7 @@ fn main() {
                         console.log('[AdBlocker] Blocked window.open:', url);
                         return null;
                     };
-                    
+
                     // Block popup via addEventListener
                     window.addEventListener('click', function(e) {
                         const target = e.target;
@@ -1876,7 +1912,7 @@ fn main() {
                             }
                         }
                     }, true);
-                    
+
                     // Override createElement to intercept dynamic script/iframe ads
                     const originalCreateElement = document.createElement.bind(document);
                     document.createElement = function(tagName) {
@@ -1897,30 +1933,38 @@ fn main() {
                         }
                         return element;
                     };
-                    
+
                     console.log('[AdBlocker] Popup blocking injected');
                 })();
             "#;
-            
+
             window.eval(popup_block_script).ok();
         })
         .on_window_event(|event| {
-            // Handle window events
-            if let tauri::WindowEvent::Focused(focused) = event.event() {
-                if *focused {
-                    // Re-inject popup blocker when window regains focus
-                    let window = event.window();
-                    window.eval(r#"
-                        if (!window.__adBlockerActive) {
-                            window.__adBlockerActive = true;
-                            const origOpen = window.open;
-                            window.open = function(url) {
-                                console.log('[AdBlocker] Blocked popup on focus:', url);
-                                return null;
-                            };
-                        }
-                    "#).ok();
+            match event.event() {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    // Hide window instead of closing - minimize to tray
+                    event.window().hide().ok();
+                    api.prevent_close();
+                    println!("[TRAY] Window minimized to system tray");
                 }
+                tauri::WindowEvent::Focused(focused) => {
+                    if *focused {
+                        // Re-inject popup blocker when window regains focus
+                        let window = event.window();
+                        window.eval(r#"
+                            if (!window.__adBlockerActive) {
+                                window.__adBlockerActive = true;
+                                const origOpen = window.open;
+                                window.open = function(url) {
+                                    console.log('[AdBlocker] Blocked popup on focus:', url);
+                                    return null;
+                                };
+                            }
+                        "#).ok();
+                    }
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![

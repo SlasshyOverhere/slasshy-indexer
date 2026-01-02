@@ -175,6 +175,8 @@ function App() {
     let unlistenProgress: UnlistenFn | undefined
     let unlistenComplete: UnlistenFn | undefined
     let unlistenMpvEnded: UnlistenFn | undefined
+    let unlistenLibraryUpdated: UnlistenFn | undefined
+    let unlistenNotification: UnlistenFn | undefined
 
     const setupListeners = async () => {
       unlistenProgress = await listen<ScanProgressPayload>('scan-progress', (event) => {
@@ -208,6 +210,27 @@ function App() {
         await fetchData()
         await loadContinueWatching()
       })
+
+      // Listen for real-time library updates from file watcher
+      unlistenLibraryUpdated = await listen<{ type: string; title: string }>('library-updated', async (event) => {
+        const { type, title } = event.payload
+        console.log(`[WATCHER] Library updated: ${type} - ${title}`)
+
+        // Refresh data when files are added or removed
+        await fetchData()
+        await loadLibraryStats()
+        await loadContinueWatching()
+      })
+
+      // Listen for notification events from file watcher
+      unlistenNotification = await listen<{ type: string; title: string; message: string }>('notification', (event) => {
+        const { type, title, message } = event.payload
+        toast({
+          title,
+          description: message,
+          variant: type === 'success' ? 'default' : type === 'info' ? 'default' : 'destructive'
+        })
+      })
     }
 
     setupListeners()
@@ -215,6 +238,8 @@ function App() {
       unlistenProgress?.()
       unlistenComplete?.()
       unlistenMpvEnded?.()
+      unlistenLibraryUpdated?.()
+      unlistenNotification?.()
     }
   }, [])
 

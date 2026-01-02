@@ -548,6 +548,90 @@ impl Database {
         let exists = stmt.exists(params![file_path])?;
         Ok(exists)
     }
+
+    /// Get all file paths currently in the database (for folder tracker sync)
+    /// Only returns actual file paths (excludes TV series parent entries which don't have real file paths)
+    pub fn get_all_file_paths(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT file_path FROM media
+             WHERE file_path IS NOT NULL
+             AND file_path != ''
+             AND media_type != 'tvshow'
+             AND (file_path LIKE '%.mkv'
+                  OR file_path LIKE '%.mp4'
+                  OR file_path LIKE '%.avi'
+                  OR file_path LIKE '%.mov'
+                  OR file_path LIKE '%.webm'
+                  OR file_path LIKE '%.m4v'
+                  OR file_path LIKE '%.wmv'
+                  OR file_path LIKE '%.flv'
+                  OR file_path LIKE '%.ts'
+                  OR file_path LIKE '%.m2ts')"
+        )?;
+
+        let paths = stmt.query_map([], |row| {
+            row.get::<_, String>(0)
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(paths)
+    }
+
+    /// Get media item by file path - used for file watcher to identify media for removal
+    pub fn get_media_by_file_path(&self, file_path: &str) -> Result<Option<MediaItem>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, year, overview, poster_path, file_path, media_type,
+                    duration_seconds, resume_position_seconds, last_watched,
+                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path
+             FROM media WHERE file_path = ?"
+        )?;
+
+        match stmt.query_row(params![file_path], Self::map_media_item) {
+            Ok(item) => Ok(Some(item)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Remove media by file path and return image paths for cleanup
+    pub fn remove_media_by_file_path(&self, file_path: &str) -> Result<Option<(i64, String, Option<String>, Option<String>)>> {
+        // First get the media info so we can return it for cleanup
+        let media_info: Option<(i64, String, Option<String>, Option<String>)> = self.conn.query_row(
+            "SELECT id, title, poster_path, still_path FROM media WHERE file_path = ?",
+            params![file_path],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        ).ok();
+
+        if let Some((id, _, _, _)) = &media_info {
+            // Delete the entry
+            self.conn.execute("DELETE FROM media WHERE id = ?", params![id])?;
+        }
+
+        Ok(media_info)
+    }
+
+    /// Check if a TV show series still has any episodes after removal
+    /// If not, it should also be removed
+    pub fn cleanup_empty_series(&self) -> Result<Vec<(i64, Option<String>)>> {
+        // Find tvshows with no episodes
+        let mut stmt = self.conn.prepare(
+            "SELECT m.id, m.poster_path FROM media m
+             WHERE m.media_type = 'tvshow'
+             AND NOT EXISTS (SELECT 1 FROM media e WHERE e.parent_id = m.id)"
+        )?;
+
+        let empty_series: Vec<(i64, Option<String>)> = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?.filter_map(|r| r.ok()).collect();
+
+        // Delete empty series
+        for (id, _) in &empty_series {
+            self.conn.execute("DELETE FROM media WHERE id = ?", params![id])?;
+        }
+
+        Ok(empty_series)
+    }
     
     pub fn find_series_by_folder(&self, folder_path: &str) -> Result<Option<i64>> {
         let mut stmt = self.conn.prepare(
@@ -955,16 +1039,6 @@ impl Database {
         }
 
         Ok(all_paths)
-    }
-
-    /// Get all file paths for fast lookup during scanning
-    pub fn get_all_file_paths(&self) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT file_path FROM media WHERE file_path IS NOT NULL"
-        )?;
-
-        let paths = stmt.query_map([], |row| row.get::<_, String>(0))?;
-        paths.filter_map(|r| r.ok()).collect::<Vec<_>>().into_iter().map(Ok).collect()
     }
 
     /// Remove a media entry by ID
