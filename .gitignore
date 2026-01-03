@@ -18,10 +18,12 @@ dist-ssr
 # Tauri
 src-tauri/target/
 target/
+src-tauri/binaries/
+src-tauri/Fallout/
 
 # Rust
 *.rs.bk
-Cargo.lock
+# Cargo.lock - Committed for apps
 
 # Editor directories and files
 .vscode/*
@@ -49,11 +51,16 @@ Thumbs.db
 .env.development.local
 .env.test.local
 .env.production.local
+src-tauri/.env
 
 # App data (generated at runtime)
 *.db
 *.db-journal
 image_cache/
+media_config.json
+
+# Google Drive OAuth tokens (sensitive - stored by the app)
+gdrive_tokens.json
 
 # TypeScript
 *.tsbuildinfo

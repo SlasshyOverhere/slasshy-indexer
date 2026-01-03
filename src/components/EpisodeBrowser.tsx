@@ -4,13 +4,12 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Play, ChevronLeft, Clock, Check, Loader2, Star, Timer, ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
 import {
-    MediaItem, getEpisodes, playMedia, getResumeInfo, getStreamUrl, updateWatchProgress,
-    StreamInfo, getCachedImageUrl, ResumeInfo, getTvSeasonEpisodes, TmdbEpisodeInfo,
+    MediaItem, getEpisodes, playMedia, getResumeInfo,
+    getCachedImageUrl, ResumeInfo, getTvSeasonEpisodes, TmdbEpisodeInfo,
     getTmdbImageUrl, refreshSeriesMetadata
 } from "@/services/api"
 import { useToast } from "@/components/ui/use-toast"
 import { PlayerModal } from "@/components/PlayerModal"
-import { VideoPlayer } from "@/components/VideoPlayer"
 import { ResumeDialog } from "@/components/ResumeDialog"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
@@ -96,7 +95,7 @@ function EpisodeThumbnailImage({
     return (
         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/50">
             <span className="text-2xl font-bold text-muted-foreground/50">
-                {episodeNumber}
+                {episodeNumber > 0 ? episodeNumber : '?'}
             </span>
         </div>
     );
@@ -117,11 +116,6 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
     const [playerModalOpen, setPlayerModalOpen] = useState(false)
     const [pendingPlayEpisode, setPendingPlayEpisode] = useState<MediaItem | null>(null)
     const [pendingResumeTime, setPendingResumeTime] = useState(0)
-
-    // Built-in player state
-    const [isPlayerOpen, setIsPlayerOpen] = useState(false)
-    const [currentStreamInfo, setCurrentStreamInfo] = useState<StreamInfo | null>(null)
-    const [currentPlayingId, setCurrentPlayingId] = useState<number | null>(null)
 
     // Resume dialog state
     const [resumeDialogOpen, setResumeDialogOpen] = useState(false)
@@ -272,23 +266,10 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
         }
     }
 
-    const playWithBuiltinPlayer = async (episode: MediaItem, resumeTime: number) => {
-        try {
-            const streamInfo = await getStreamUrl(episode.id);
-            setCurrentStreamInfo({
-                ...streamInfo,
-                resume_position_seconds: resumeTime || streamInfo.resume_position_seconds
-            });
-            setCurrentPlayingId(episode.id);
-            setIsPlayerOpen(true);
-        } catch (e) {
-            toast({ title: "Error", description: "Failed to get stream URL.", variant: "destructive" });
-        }
-    }
-
-    const handlePlayerSelect = async (player: 'mpv' | 'builtin' | 'stream') => {
+    const handlePlayerSelect = async (player: 'mpv' | 'vlc' | 'builtin' | 'stream') => {
         if (!pendingPlayEpisode) return;
 
+        // Only MPV is supported now
         if (player === 'mpv') {
             try {
                 await playMedia(pendingPlayEpisode.id, pendingResumeTime > 0);
@@ -299,29 +280,10 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
             } catch (e) {
                 toast({ title: "Error", description: "Failed to start playback", variant: "destructive" })
             }
-        } else if (player === 'builtin') {
-            await playWithBuiltinPlayer(pendingPlayEpisode, pendingResumeTime);
         }
 
         setPendingPlayEpisode(null);
         setPendingResumeTime(0);
-    }
-
-    const handlePlayerClose = () => {
-        setIsPlayerOpen(false);
-        setCurrentStreamInfo(null);
-        setCurrentPlayingId(null);
-        loadEpisodes();
-    }
-
-    const handlePlayerProgress = async (currentTime: number, duration: number) => {
-        if (currentPlayingId) {
-            try {
-                await updateWatchProgress(currentPlayingId, currentTime, duration);
-            } catch (e) {
-                console.error("Failed to update progress", e);
-            }
-        }
     }
 
     const imageSrc = posterUrl || `https://placehold.co/400x600/1a1a2e/3a3a4e?text=${encodeURIComponent(show.title.slice(0, 2))}`;
@@ -331,77 +293,78 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
             <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="h-full flex flex-col"
+                className="h-full flex flex-col overflow-hidden"
             >
-                {/* Back Button */}
+                {/* Back Button - Fixed at top */}
                 <button
                     onClick={onBack}
-                    className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6 w-fit"
+                    className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-4 w-fit flex-shrink-0"
                 >
                     <ChevronLeft className="w-4 h-4" />
-                    <span className="text-sm font-medium">Back to TV Shows</span>
+                    <span className="text-sm font-medium">
+                        {show.is_cloud ? 'Back to Cloud TV Shows' : 'Back to TV Shows'}
+                    </span>
                 </button>
 
-                <div className="flex flex-col lg:flex-row gap-8 flex-1 min-h-0">
-                    {/* Left: Show Info */}
-                    <div className="w-full lg:w-80 flex-shrink-0">
-                        <div className="sticky top-0">
-                            {/* Poster */}
-                            <div className="rounded-xl overflow-hidden shadow-elevation-2 mb-6">
-                                <img
-                                    src={imageSrc}
-                                    alt={show.title}
-                                    className="w-full aspect-[2/3] object-cover"
-                                />
+                {/* Main Content - Two column layout */}
+                <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
+                    {/* Left: Show Info - Fixed/Sticky sidebar */}
+                    <div className="w-full lg:w-48 xl:w-56 flex-shrink-0 lg:h-full lg:overflow-y-auto">
+                        {/* Poster - smaller on lg screens */}
+                        <div className="rounded-xl overflow-hidden shadow-elevation-2 mb-3 lg:mb-4">
+                            <img
+                                src={imageSrc}
+                                alt={show.title}
+                                className="w-full aspect-[2/3] object-cover max-h-[200px] lg:max-h-none"
+                            />
+                        </div>
+
+                        {/* Title & Info */}
+                        <h1 className="text-base lg:text-lg xl:text-xl font-bold text-foreground mb-1 lg:mb-2 line-clamp-2">{show.title}</h1>
+                        {show.year && (
+                            <p className="text-sm text-muted-foreground mb-2 lg:mb-3">{show.year}</p>
+                        )}
+
+                        {/* Stats */}
+                        <div className="flex gap-1.5 lg:gap-2 mb-2 lg:mb-3 flex-wrap">
+                            <div className="px-2 py-0.5 lg:px-2.5 lg:py-1 rounded-lg bg-muted text-xs">
+                                {seasons.length} Season{seasons.length !== 1 ? 's' : ''}
                             </div>
-
-                            {/* Title & Info */}
-                            <h1 className="text-2xl font-bold text-foreground mb-2">{show.title}</h1>
-                            {show.year && (
-                                <p className="text-muted-foreground mb-4">{show.year}</p>
-                            )}
-
-                            {/* Stats */}
-                            <div className="flex gap-4 mb-4 flex-wrap">
-                                <div className="px-3 py-1.5 rounded-lg bg-muted text-sm">
-                                    {seasons.length} Season{seasons.length !== 1 ? 's' : ''}
-                                </div>
-                                <div className="px-3 py-1.5 rounded-lg bg-muted text-sm">
-                                    {episodes.length} Episode{episodes.length !== 1 ? 's' : ''}
-                                </div>
-                                {show.tmdb_id && (
-                                    <button
-                                        onClick={handleRefreshMetadata}
-                                        disabled={isRefreshing}
-                                        className="px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-sm flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                                        title="Refresh metadata and images from TMDB"
-                                    >
-                                        <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")} />
-                                        {isRefreshing ? "Refreshing..." : "Refresh"}
-                                    </button>
-                                )}
+                            <div className="px-2 py-0.5 lg:px-2.5 lg:py-1 rounded-lg bg-muted text-xs">
+                                {episodes.length} Ep{episodes.length !== 1 ? 's' : ''}
                             </div>
-
-                            {/* Overview */}
-                            {show.overview && (
-                                <p className="text-sm text-muted-foreground leading-relaxed line-clamp-4">
-                                    {show.overview}
-                                </p>
+                            {show.tmdb_id && (
+                                <button
+                                    onClick={handleRefreshMetadata}
+                                    disabled={isRefreshing}
+                                    className="px-2 py-0.5 lg:px-2.5 lg:py-1 rounded-lg bg-muted hover:bg-muted/80 text-xs flex items-center gap-1 transition-colors disabled:opacity-50"
+                                    title="Refresh metadata and images from TMDB"
+                                >
+                                    <RefreshCw className={cn("w-3 h-3", isRefreshing && "animate-spin")} />
+                                    {isRefreshing ? "..." : "↻"}
+                                </button>
                             )}
                         </div>
+
+                        {/* Overview - hidden on smaller screens */}
+                        {show.overview && (
+                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3 hidden xl:block">
+                                {show.overview}
+                            </p>
+                        )}
                     </div>
 
-                    {/* Right: Episodes */}
-                    <div className="flex-1 flex flex-col min-h-0">
-                        {/* Season Tabs */}
+                    {/* Right: Episodes Panel - This is the scrolling area */}
+                    <div className="flex-1 flex flex-col min-h-0 h-full">
+                        {/* Season Tabs - Fixed at top of episode panel */}
                         {seasons.length > 1 && (
-                            <div className="flex gap-2 mb-4 flex-wrap">
+                            <div className="flex gap-2 mb-3 flex-wrap flex-shrink-0">
                                 {seasons.map((season) => (
                                     <button
                                         key={season}
                                         onClick={() => setSelectedSeason(season)}
                                         className={cn(
-                                            "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                                            "px-3 py-1.5 rounded-lg text-xs lg:text-sm font-medium transition-all duration-200",
                                             selectedSeason === season
                                                 ? "bg-primary text-primary-foreground"
                                                 : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
@@ -414,8 +377,8 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
                         )}
 
                         {/* Episode List */}
-                        <div className="flex-1 rounded-xl border border-border bg-card overflow-hidden">
-                            <ScrollArea className="h-full max-h-[calc(100vh-280px)]">
+                        <div className="flex-1 rounded-xl border border-border bg-card overflow-hidden min-h-0">
+                            <ScrollArea className="h-full">
                                 {loading ? (
                                     <div className="p-8 flex items-center justify-center text-muted-foreground">
                                         <Loader2 className="w-6 h-6 animate-spin mr-2" />
@@ -459,11 +422,11 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
                                                 >
                                                     <div
                                                         onClick={() => handlePlay(episode)}
-                                                        className="p-4 cursor-pointer group"
+                                                        className="p-3 lg:p-4 cursor-pointer group"
                                                     >
-                                                        <div className="flex gap-4">
+                                                        <div className="flex gap-3 lg:gap-4">
                                                             {/* Episode Thumbnail */}
-                                                            <div className="relative flex-shrink-0 w-40 aspect-video rounded-lg overflow-hidden bg-muted">
+                                                            <div className="relative flex-shrink-0 w-28 md:w-36 lg:w-40 aspect-video rounded-lg overflow-hidden bg-muted">
                                                                 <EpisodeThumbnailImage
                                                                     localStillPath={localStillPath}
                                                                     tmdbStillUrl={stillUrl}
@@ -473,8 +436,8 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
 
                                                                 {/* Play overlay */}
                                                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                    <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-                                                                        <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+                                                                    <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-primary flex items-center justify-center">
+                                                                        <Play className="w-4 h-4 lg:w-5 lg:h-5 text-white fill-white ml-0.5" />
                                                                     </div>
                                                                 </div>
 
@@ -490,37 +453,37 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
 
                                                                 {/* Watched badge */}
                                                                 {isFinished && (
-                                                                    <div className="absolute top-2 right-2 px-2 py-0.5 rounded bg-emerald-500 text-white text-xs font-medium flex items-center gap-1">
-                                                                        <Check className="w-3 h-3" />
+                                                                    <div className="absolute top-1.5 right-1.5 lg:top-2 lg:right-2 px-1.5 py-0.5 rounded bg-emerald-500 text-white text-[10px] lg:text-xs font-medium flex items-center gap-1">
+                                                                        <Check className="w-2.5 h-2.5 lg:w-3 lg:h-3" />
                                                                     </div>
                                                                 )}
                                                             </div>
 
                                                             {/* Episode Info */}
-                                                            <div className="flex-1 min-w-0 py-1">
+                                                            <div className="flex-1 min-w-0 py-0.5 lg:py-1">
                                                                 {/* Header row */}
                                                                 <div className="flex items-start justify-between gap-2">
                                                                     <div className="flex-1 min-w-0">
-                                                                        <div className="flex items-center gap-2 mb-1">
-                                                                            <span className="text-xs font-medium text-primary">
+                                                                        <div className="flex items-center gap-2 mb-0.5 lg:mb-1">
+                                                                            <span className="text-[10px] lg:text-xs font-medium text-primary">
                                                                                 Episode {episode.episode_number}
                                                                             </span>
                                                                             {hasProgress && (
-                                                                                <span className="badge-primary flex items-center gap-1 text-xs">
-                                                                                    <Clock className="w-3 h-3" />
+                                                                                <span className="badge-primary flex items-center gap-1 text-[10px] lg:text-xs">
+                                                                                    <Clock className="w-2.5 h-2.5 lg:w-3 lg:h-3" />
                                                                                     {Math.round(progress)}%
                                                                                 </span>
                                                                             )}
                                                                         </div>
-                                                                        <h4 className="font-semibold text-foreground line-clamp-1">
+                                                                        <h4 className="font-semibold text-foreground line-clamp-1 text-sm lg:text-base">
                                                                             {episodeTitle}
                                                                         </h4>
                                                                     </div>
 
-                                                                    {/* Play button */}
+                                                                    {/* Play button - hidden on small screens */}
                                                                     <Button
                                                                         size="sm"
-                                                                        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity hidden md:flex"
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
                                                                             handlePlay(episode);
@@ -532,26 +495,28 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
                                                                 </div>
 
                                                                 {/* Metadata row - show duration from local file if available */}
-                                                                <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                                                                    {episode.duration_seconds && (
-                                                                        <span className="flex items-center gap-1">
-                                                                            <Timer className="w-3 h-3" />
-                                                                            {Math.round(episode.duration_seconds / 60)} min
-                                                                        </span>
-                                                                    )}
-                                                                    {tmdbData?.vote_average && tmdbData.vote_average > 0 && (
-                                                                        <span className="flex items-center gap-1">
-                                                                            <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                                                                            {tmdbData.vote_average.toFixed(1)}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
+                                                                {((episode.duration_seconds && episode.duration_seconds >= 60) || (tmdbData?.vote_average && tmdbData.vote_average > 0)) && (
+                                                                    <div className="flex items-center gap-2 lg:gap-3 mt-1 lg:mt-1.5 text-[10px] lg:text-xs text-muted-foreground">
+                                                                        {episode.duration_seconds && episode.duration_seconds >= 60 && (
+                                                                            <span className="flex items-center gap-1">
+                                                                                <Timer className="w-2.5 h-2.5 lg:w-3 lg:h-3" />
+                                                                                {Math.round(episode.duration_seconds / 60)} min
+                                                                            </span>
+                                                                        )}
+                                                                        {tmdbData?.vote_average && tmdbData.vote_average > 0 && (
+                                                                            <span className="flex items-center gap-1">
+                                                                                <Star className="w-2.5 h-2.5 lg:w-3 lg:h-3 text-amber-400 fill-amber-400" />
+                                                                                {tmdbData.vote_average.toFixed(1)}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
 
-                                                                {/* Overview/Description - use local overview first */}
+                                                                {/* Overview/Description - hidden on small screens */}
                                                                 {(episode.overview || tmdbData?.overview) && (
-                                                                    <div className="mt-2">
+                                                                    <div className="mt-1.5 lg:mt-2 hidden md:block">
                                                                         <p className={cn(
-                                                                            "text-sm text-muted-foreground",
+                                                                            "text-xs lg:text-sm text-muted-foreground",
                                                                             isExpanded ? "" : "line-clamp-2"
                                                                         )}>
                                                                             {episode.overview || tmdbData?.overview}
@@ -562,12 +527,12 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
                                                                                     e.stopPropagation();
                                                                                     setExpandedEpisode(isExpanded ? null : episode.id);
                                                                                 }}
-                                                                                className="text-xs text-primary hover:underline mt-1 flex items-center gap-0.5"
+                                                                                className="text-[10px] lg:text-xs text-primary hover:underline mt-1 flex items-center gap-0.5"
                                                                             >
                                                                                 {isExpanded ? (
-                                                                                    <>Show less <ChevronUp className="w-3 h-3" /></>
+                                                                                    <>Show less <ChevronUp className="w-2.5 h-2.5 lg:w-3 lg:h-3" /></>
                                                                                 ) : (
-                                                                                    <>Show more <ChevronDown className="w-3 h-3" /></>
+                                                                                    <>Show more <ChevronDown className="w-2.5 h-2.5 lg:w-3 lg:h-3" /></>
                                                                                 )}
                                                                             </button>
                                                                         )}
@@ -595,18 +560,6 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
                 title={pendingPlayEpisode ? `S${String(pendingPlayEpisode.season_number).padStart(2, '0')}E${String(pendingPlayEpisode.episode_number).padStart(2, '0')} - ${pendingPlayEpisode.title}` : ''}
                 hasTmdbId={!!show.tmdb_id}
             />
-
-            {/* Built-in Video Player */}
-            {isPlayerOpen && currentStreamInfo && (
-                <VideoPlayer
-                    src={currentStreamInfo.stream_url}
-                    title={currentStreamInfo.title}
-                    poster={currentStreamInfo.poster}
-                    initialTime={currentStreamInfo.resume_position_seconds}
-                    onClose={handlePlayerClose}
-                    onProgress={handlePlayerProgress}
-                />
-            )}
 
             {/* Resume Dialog */}
             {resumeDialogData && (

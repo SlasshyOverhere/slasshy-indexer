@@ -178,57 +178,184 @@ pub struct MpvLaunchResult {
     pub completed: bool,
 }
 
+/// Cloud cache settings for MPV disk caching
+#[derive(Debug, Clone)]
+pub struct CloudCacheSettings {
+    pub enabled: bool,
+    pub cache_dir: String,
+    pub max_size_mb: u32,
+}
+
+/// Check if a cached video file exists for a media item
+pub fn get_cached_video_path(cache_dir: &str, media_id: i64) -> Option<String> {
+    let media_cache_dir = std::path::Path::new(cache_dir).join(format!("media_{}", media_id));
+
+    if !media_cache_dir.exists() {
+        return None;
+    }
+
+    // Look for video file in cache directory
+    if let Ok(entries) = std::fs::read_dir(&media_cache_dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_file() {
+                // Check if it's a video file (has reasonable size)
+                if let Ok(metadata) = path.metadata() {
+                    // Consider files > 1MB as valid cached videos
+                    if metadata.len() > 1_000_000 {
+                        return Some(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// Launch MPV with progress tracking
+/// `auth_header` is optional and used for cloud files (e.g., "Authorization: Bearer xxx")
+/// `cache_settings` is optional and enables disk-based caching for cloud streams
 pub fn launch_mpv_with_tracking(
     mpv_path: &str,
-    file_path: &str,
+    file_or_url: &str,
     media_id: i64,
     start_position: f64,
+    auth_header: Option<&str>,
+    cache_settings: Option<&CloudCacheSettings>,
 ) -> Result<u32, String> {
-    println!("[MPV] Launching MPV with tracking for media ID: {}", media_id);
-    println!("[MPV] File: {}", file_path);
+    println!("[MPV] ========== LAUNCHING MPV ==========");
+    println!("[MPV] Media ID: {}", media_id);
+    println!("[MPV] MPV Path: {}", mpv_path);
+    println!("[MPV] Source: {}", file_or_url);
+    println!("[MPV] Is URL: {}", file_or_url.starts_with("http"));
+    println!("[MPV] Has auth header: {}", auth_header.is_some());
+    println!("[MPV] Disk cache: {}", cache_settings.map(|c| c.enabled).unwrap_or(false));
     println!("[MPV] Start position: {:.2}s", start_position);
-    
+
+    // Only verify file exists for local files (not URLs)
+    let is_url = file_or_url.starts_with("http://") || file_or_url.starts_with("https://");
+    if !is_url && !std::path::Path::new(file_or_url).exists() {
+        return Err(format!("File does not exist: {}", file_or_url));
+    }
+
+    // Check if we have a cached version of this cloud video
+    let (actual_source, use_cached) = if is_url {
+        if let Some(cache) = cache_settings {
+            if cache.enabled && !cache.cache_dir.is_empty() {
+                if let Some(cached_path) = get_cached_video_path(&cache.cache_dir, media_id) {
+                    println!("[MPV] Using cached video: {}", cached_path);
+                    (cached_path, true)
+                } else {
+                    (file_or_url.to_string(), false)
+                }
+            } else {
+                (file_or_url.to_string(), false)
+            }
+        } else {
+            (file_or_url.to_string(), false)
+        }
+    } else {
+        (file_or_url.to_string(), false)
+    };
+
     // Create the Lua tracking script
     let script_path = create_lua_script(media_id)?;
     println!("[MPV] Created tracking script at: {:?}", script_path);
-    
+
     // Build MPV command
     let mut cmd = std::process::Command::new(mpv_path);
-    
+
     // Add the tracking script
-    cmd.arg(format!("--script={}", script_path.to_string_lossy()));
-    
+    let script_arg = format!("--script={}", script_path.to_string_lossy());
+    cmd.arg(&script_arg);
+
     // Add start position if resuming
     if start_position > 0.0 {
         cmd.arg(format!("--start={}", start_position as i64));
     }
-    
-    // Add the file to play
-    cmd.arg(file_path);
-    
+
+    // Add HTTP headers for cloud streaming (Google Drive auth) - only if streaming from URL
+    if !use_cached {
+        if let Some(header) = auth_header {
+            cmd.arg(format!("--http-header-fields={}", header));
+            println!("[MPV] Added HTTP header for authentication");
+        }
+    }
+
+    // Add the file/URL to play
+    cmd.arg(&actual_source);
+
     // Options
     cmd.arg("--save-position-on-quit=no");
     cmd.arg("--keep-open=no");
-    
-    // Hide console window on Windows
+
+    // For URLs (not cached), add streaming/caching options
+    if is_url && !use_cached {
+        // Check if disk caching is enabled - use stream-record for persistent caching
+        if let Some(cache) = cache_settings {
+            if cache.enabled && !cache.cache_dir.is_empty() {
+                // Create media-specific cache subdirectory
+                let media_cache_dir = std::path::Path::new(&cache.cache_dir)
+                    .join(format!("media_{}", media_id));
+
+                if let Err(e) = std::fs::create_dir_all(&media_cache_dir) {
+                    println!("[MPV] Warning: Failed to create cache dir: {}", e);
+                } else {
+                    // Use stream-record to save the video to disk as it plays
+                    // This creates a persistent cache file that survives MPV exit
+                    let cache_file = media_cache_dir.join("video.mp4");
+
+                    // Only record if we don't already have a cache file
+                    if !cache_file.exists() {
+                        cmd.arg(format!("--stream-record={}", cache_file.to_string_lossy()));
+                        println!("[MPV] Recording stream to: {}", cache_file.display());
+                    }
+
+                    // Also enable memory cache for smooth playback while recording
+                    cmd.arg("--cache=yes");
+                    let cache_bytes = (cache.max_size_mb as u64) * 1024 * 1024;
+                    cmd.arg(format!("--demuxer-max-bytes={}", cache_bytes));
+                    cmd.arg(format!("--demuxer-max-back-bytes={}", cache_bytes / 4));
+
+                    println!("[MPV] Disk cache enabled: {} (max {}MB)",
+                        media_cache_dir.display(), cache.max_size_mb);
+                }
+            } else {
+                // Memory-only cache
+                cmd.arg("--demuxer-max-bytes=500MiB");
+                cmd.arg("--demuxer-max-back-bytes=100MiB");
+                cmd.arg("--cache=yes");
+            }
+        } else {
+            // Default memory cache for URLs
+            cmd.arg("--demuxer-max-bytes=500MiB");
+            cmd.arg("--demuxer-max-back-bytes=100MiB");
+            cmd.arg("--cache=yes");
+        }
+    }
+
+    // Print full command for debugging
+    println!("[MPV] Command: {:?}", cmd);
+
+    // Hide console window on Windows - but keep stderr/stdout for debugging
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
-    
-    // Capture stdout/stderr for debugging (optional)
-    cmd.stdout(std::process::Stdio::null());
-    cmd.stderr(std::process::Stdio::null());
+
+    // Let MPV inherit stdout/stderr so we can see errors in the console
+    cmd.stdout(std::process::Stdio::inherit());
+    cmd.stderr(std::process::Stdio::inherit());
 
     // Spawn MPV process
     let child = cmd.spawn()
         .map_err(|e| format!("Failed to start MPV: {}", e))?;
-    
+
     let pid = child.id();
     println!("[MPV] Started with PID: {}", pid);
-    
+
     Ok(pid)
 }
 

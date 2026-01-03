@@ -4,16 +4,25 @@ use std::path::PathBuf;
 
 const APP_NAME: &str = "Slasshy";
 
+/// Get the app data directory, with separate paths for dev and production builds
+/// Dev builds use "Slasshy-Dev" to keep data isolated from production
 pub fn get_app_data_dir() -> PathBuf {
+    // Use a different directory name for debug/dev builds
+    let dir_name = if cfg!(debug_assertions) {
+        format!("{}-Dev", APP_NAME)
+    } else {
+        APP_NAME.to_string()
+    };
+
     #[cfg(windows)]
     {
         if let Some(appdata) = std::env::var_os("APPDATA") {
-            return PathBuf::from(appdata).join(APP_NAME);
+            return PathBuf::from(appdata).join(&dir_name);
         }
     }
-    
+
     dirs::home_dir()
-        .map(|h| h.join(format!(".{}", APP_NAME)))
+        .map(|h| h.join(format!(".{}", dir_name)))
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
@@ -48,6 +57,9 @@ pub struct MediaItem {
     pub tmdb_id: Option<String>,
     pub episode_title: Option<String>,
     pub still_path: Option<String>,
+    // Cloud storage fields
+    pub is_cloud: Option<bool>,
+    pub cloud_file_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +177,17 @@ impl Database {
             self.conn.execute("ALTER TABLE media ADD COLUMN still_path TEXT DEFAULT NULL", [])?;
         }
 
+        // Cloud storage columns
+        if !columns.contains(&"is_cloud".to_string()) {
+            self.conn.execute("ALTER TABLE media ADD COLUMN is_cloud INTEGER DEFAULT 0", [])?;
+        }
+        if !columns.contains(&"cloud_file_id".to_string()) {
+            self.conn.execute("ALTER TABLE media ADD COLUMN cloud_file_id TEXT DEFAULT NULL", [])?;
+        }
+        if !columns.contains(&"cloud_folder_id".to_string()) {
+            self.conn.execute("ALTER TABLE media ADD COLUMN cloud_folder_id TEXT DEFAULT NULL", [])?;
+        }
+
         // Create cached_episode_metadata table for pre-fetched episode info from TMDB
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS cached_episode_metadata (
@@ -216,17 +239,84 @@ impl Database {
              ON streaming_history (tmdb_id, media_type, COALESCE(season, -1), COALESCE(episode, -1))",
             [],
         )?;
-        
+
+        // Create cloud_folders table for storing Google Drive folder configurations
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS cloud_folders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                folder_id TEXT NOT NULL UNIQUE,
+                folder_name TEXT NOT NULL,
+                auto_scan INTEGER DEFAULT 1,
+                last_scanned TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )",
+            [],
+        )?;
+
+        // Add changes_page_token column if it doesn't exist (migration)
+        self.conn.execute(
+            "ALTER TABLE cloud_folders ADD COLUMN changes_page_token TEXT",
+            [],
+        ).ok(); // Ignore error if column already exists
+
+        // Create app_settings table for storing global settings like the changes token
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )",
+            [],
+        )?;
+
         Ok(())
     }
-    
+
     pub fn get_library(&self, media_type: &str, search: Option<&str>) -> Result<Vec<MediaItem>> {
         let mut sql = String::from(
             "SELECT id, title, year, overview, poster_path, file_path, media_type,
                     duration_seconds, resume_position_seconds, last_watched,
-                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path
+                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path,
+                    is_cloud, cloud_file_id,
+                    is_cloud, cloud_file_id
              FROM media WHERE media_type = ?"
         );
+
+        if search.is_some() {
+            sql.push_str(" AND title LIKE ?");
+        }
+        sql.push_str(" ORDER BY title");
+
+        let mut stmt = self.conn.prepare(&sql)?;
+
+        let items = if let Some(query) = search {
+            stmt.query_map(params![media_type, format!("%{}%", query)], Self::map_media_item)?
+        } else {
+            stmt.query_map(params![media_type], Self::map_media_item)?
+        };
+
+        items.filter_map(|r| r.ok()).collect::<Vec<_>>().into_iter().map(Ok).collect()
+    }
+
+    /// Get library filtered by cloud status
+    pub fn get_library_filtered(&self, media_type: &str, search: Option<&str>, is_cloud: Option<bool>) -> Result<Vec<MediaItem>> {
+        let mut sql = String::from(
+            "SELECT id, title, year, overview, poster_path, file_path, media_type,
+                    duration_seconds, resume_position_seconds, last_watched,
+                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path,
+                    is_cloud, cloud_file_id,
+                    is_cloud, cloud_file_id
+             FROM media WHERE media_type = ?"
+        );
+
+        // Add cloud filter if specified
+        if let Some(cloud) = is_cloud {
+            if cloud {
+                sql.push_str(" AND is_cloud = 1");
+            } else {
+                sql.push_str(" AND (is_cloud = 0 OR is_cloud IS NULL)");
+            }
+        }
 
         if search.is_some() {
             sql.push_str(" AND title LIKE ?");
@@ -248,7 +338,9 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT id, title, year, overview, poster_path, file_path, media_type,
                     duration_seconds, resume_position_seconds, last_watched,
-                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path
+                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path,
+                    is_cloud, cloud_file_id,
+                    is_cloud, cloud_file_id
              FROM media WHERE parent_id = ? ORDER BY season_number, episode_number"
         )?;
 
@@ -291,7 +383,8 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT id, title, year, overview, poster_path, file_path, media_type,
                     duration_seconds, resume_position_seconds, last_watched,
-                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path
+                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path,
+                    is_cloud, cloud_file_id
              FROM media WHERE id = ?"
         )?;
 
@@ -583,7 +676,8 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT id, title, year, overview, poster_path, file_path, media_type,
                     duration_seconds, resume_position_seconds, last_watched,
-                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path
+                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path,
+                    is_cloud, cloud_file_id
              FROM media WHERE file_path = ?"
         )?;
 
@@ -843,6 +937,200 @@ impl Database {
         Ok(())
     }
 
+    // ==================== CLOUD MEDIA METHODS ====================
+
+    /// Insert a cloud movie
+    pub fn insert_cloud_movie(
+        &self,
+        title: &str,
+        year: Option<i32>,
+        overview: Option<&str>,
+        poster_path: Option<&str>,
+        file_name: &str,
+        cloud_file_id: &str,
+        cloud_folder_id: &str,
+        tmdb_id: Option<&str>,
+    ) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO media (title, year, overview, poster_path, file_path, media_type, tmdb_id, is_cloud, cloud_file_id, cloud_folder_id)
+             VALUES (?, ?, ?, ?, ?, 'movie', ?, 1, ?, ?)",
+            params![title, year, overview, poster_path, file_name, tmdb_id, cloud_file_id, cloud_folder_id],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Insert a cloud TV show
+    pub fn insert_cloud_tvshow(
+        &self,
+        title: &str,
+        year: Option<i32>,
+        overview: Option<&str>,
+        poster_path: Option<&str>,
+        folder_name: &str,
+        cloud_folder_id: &str,
+        tmdb_id: Option<&str>,
+    ) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO media (title, year, overview, poster_path, file_path, media_type, tmdb_id, is_cloud, cloud_folder_id)
+             VALUES (?, ?, ?, ?, ?, 'tvshow', ?, 1, ?)",
+            params![title, year, overview, poster_path, folder_name, tmdb_id, cloud_folder_id],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Insert a cloud episode
+    pub fn insert_cloud_episode(
+        &self,
+        title: &str,
+        file_name: &str,
+        parent_id: i64,
+        season: i32,
+        episode: i32,
+        cloud_file_id: &str,
+        cloud_folder_id: &str,
+        episode_title: Option<&str>,
+        overview: Option<&str>,
+        still_path: Option<&str>,
+    ) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO media (title, file_path, media_type, parent_id, season_number, episode_number,
+                               is_cloud, cloud_file_id, cloud_folder_id, episode_title, overview, still_path)
+             VALUES (?, ?, 'tvepisode', ?, ?, ?, 1, ?, ?, ?, ?, ?)",
+            params![title, file_name, parent_id, season, episode, cloud_file_id, cloud_folder_id,
+                   episode_title, overview, still_path],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Check if a cloud file already exists in the database
+    pub fn cloud_file_exists(&self, cloud_file_id: &str) -> bool {
+        self.conn
+            .query_row(
+                "SELECT 1 FROM media WHERE cloud_file_id = ?",
+                params![cloud_file_id],
+                |_| Ok(()),
+            )
+            .is_ok()
+    }
+
+    /// Get cloud media by folder ID
+    pub fn get_cloud_media_by_folder(&self, cloud_folder_id: &str) -> Result<Vec<MediaItem>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, year, overview, poster_path, file_path, media_type,
+                    duration_seconds, resume_position_seconds, last_watched,
+                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path,
+                    is_cloud, cloud_file_id
+             FROM media WHERE cloud_folder_id = ?"
+        )?;
+
+        let items = stmt.query_map(params![cloud_folder_id], Self::map_media_item)?;
+        items.filter_map(|r| r.ok()).collect::<Vec<_>>().into_iter().map(Ok).collect()
+    }
+
+    /// Delete all cloud media for a folder
+    pub fn delete_cloud_folder_media(&self, cloud_folder_id: &str) -> Result<usize> {
+        let deleted = self.conn.execute(
+            "DELETE FROM media WHERE cloud_folder_id = ?",
+            params![cloud_folder_id],
+        )?;
+        Ok(deleted)
+    }
+
+    // ==================== CLOUD FOLDER MANAGEMENT ====================
+
+    /// Add a cloud folder to track
+    pub fn add_cloud_folder(&self, folder_id: &str, folder_name: &str) -> Result<i64> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO cloud_folders (folder_id, folder_name, auto_scan) VALUES (?, ?, 1)",
+            params![folder_id, folder_name],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Remove a cloud folder
+    pub fn remove_cloud_folder(&self, folder_id: &str) -> Result<usize> {
+        let deleted = self.conn.execute(
+            "DELETE FROM cloud_folders WHERE folder_id = ?",
+            params![folder_id],
+        )?;
+        Ok(deleted)
+    }
+
+    /// Get all cloud folders
+    pub fn get_cloud_folders(&self) -> Result<Vec<(String, String, bool)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT folder_id, folder_name, auto_scan FROM cloud_folders ORDER BY created_at"
+        )?;
+
+        let items = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i32>(2)? == 1,
+            ))
+        })?;
+
+        items.collect()
+    }
+
+    /// Update last scanned timestamp for a folder
+    pub fn update_cloud_folder_scanned(&self, folder_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE cloud_folders SET last_scanned = CURRENT_TIMESTAMP WHERE folder_id = ?",
+            params![folder_id],
+        )?;
+        Ok(())
+    }
+
+    /// Get all cloud file IDs currently in the database for a folder
+    pub fn get_cloud_file_ids_for_folder(&self, folder_id: &str) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT cloud_file_id FROM media WHERE cloud_folder_id = ? AND cloud_file_id IS NOT NULL"
+        )?;
+
+        let items = stmt.query_map(params![folder_id], |row| {
+            row.get::<_, String>(0)
+        })?;
+
+        items.collect()
+    }
+
+    // ==================== APP SETTINGS (for Changes Token etc.) ====================
+
+    /// Get a setting value by key
+    pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
+        let result = self.conn.query_row(
+            "SELECT value FROM app_settings WHERE key = ?",
+            params![key],
+            |row| row.get::<_, String>(0),
+        );
+
+        match result {
+            Ok(value) => Ok(Some(value)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Set a setting value
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    /// Get the Google Drive changes page token
+    pub fn get_gdrive_changes_token(&self) -> Result<Option<String>> {
+        self.get_setting("gdrive_changes_token")
+    }
+
+    /// Set the Google Drive changes page token
+    pub fn set_gdrive_changes_token(&self, token: &str) -> Result<()> {
+        self.set_setting("gdrive_changes_token", token)
+    }
+
     /// Get all episodes user has for a series (returns id, season_number, episode_number)
     pub fn get_owned_episodes_for_series(&self, series_id: i64) -> Result<Vec<(i64, i32, i32)>> {
         let mut stmt = self.conn.prepare(
@@ -870,6 +1158,23 @@ impl Database {
 
         match stmt.query_row(params![tmdb_id], |row| row.get::<_, i64>(0)) {
             Ok(id) => Ok(Some(id)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Find a TV show by title (case-insensitive) - returns the MediaItem
+    pub fn find_tvshow_by_title(&self, title: &str) -> Result<Option<MediaItem>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, year, overview, poster_path, file_path, media_type,
+                    duration_seconds, resume_position_seconds, last_watched,
+                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path,
+                    is_cloud, cloud_file_id
+             FROM media WHERE LOWER(title) = LOWER(?) AND media_type = 'tvshow'"
+        )?;
+
+        match stmt.query_row(params![title], Self::map_media_item) {
+            Ok(item) => Ok(Some(item)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e),
         }
@@ -999,7 +1304,8 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT id, title, year, overview, poster_path, file_path, media_type,
                     duration_seconds, resume_position_seconds, last_watched,
-                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path
+                    season_number, episode_number, parent_id, tmdb_id, episode_title, still_path,
+                    is_cloud, cloud_file_id
              FROM media"
         )?;
 
@@ -1261,7 +1567,7 @@ impl Database {
         
         Ok(merged)
     }
-    
+
     /// Clear all app data - deletes database tables and image cache
     /// Returns the path to the image cache directory for cleanup
     pub fn clear_all_data(&self) -> Result<String> {
@@ -1278,15 +1584,46 @@ impl Database {
         Ok(get_image_cache_dir())
     }
 
+    /// Get all media items with broken file paths (filename only, no directory)
+    pub fn get_broken_file_paths(&self) -> Result<Vec<(i64, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, file_path FROM media
+             WHERE file_path IS NOT NULL
+               AND file_path != ''
+               AND file_path NOT LIKE 'tvshow://%'
+               AND file_path NOT LIKE '%/%'
+               AND file_path NOT LIKE '%\\%'"
+        )?;
+
+        let items = stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        items.collect()
+    }
+
+    /// Update the file path for a media item
+    pub fn update_file_path(&self, media_id: i64, new_path: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE media SET file_path = ? WHERE id = ?",
+            params![new_path, media_id],
+        )?;
+        Ok(())
+    }
+
     fn map_media_item(row: &rusqlite::Row) -> rusqlite::Result<MediaItem> {
         let duration: Option<f64> = row.get(7)?;
         let resume_pos: Option<f64> = row.get(8)?;
-        
+
         let progress_percent = match (resume_pos, duration) {
             (Some(pos), Some(dur)) if dur > 0.0 => Some((pos / dur) * 100.0),
             _ => Some(0.0),
         };
-        
+
+        // Get is_cloud as integer and convert to bool
+        let is_cloud_int: Option<i32> = row.get(16).ok();
+        let is_cloud = is_cloud_int.map(|v| v != 0);
+
         Ok(MediaItem {
             id: row.get(0)?,
             title: row.get(1)?,
@@ -1305,6 +1642,8 @@ impl Database {
             tmdb_id: row.get(13)?,
             episode_title: row.get(14)?,
             still_path: row.get(15)?,
+            is_cloud,
+            cloud_file_id: row.get(17).ok(),
         })
     }
 }

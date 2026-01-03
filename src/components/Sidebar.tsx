@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils"
 import {
-  Play, Film, Tv, History, Settings,
-  Globe, Home, RotateCw, Sparkles
+  Play, History, Settings,
+  Globe, Home, RotateCw, Sparkles, HardDrive, Cloud
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useState, useEffect } from "react"
@@ -19,6 +19,8 @@ interface SidebarProps {
     current: number
     total: number
   } | null
+  showLocalTab?: boolean
+  showCloudTab?: boolean
 }
 
 // Smooth spring config for natural feel
@@ -41,6 +43,8 @@ export function Sidebar({
   onOpenSettings,
   onScan,
   isScanning = false,
+  showLocalTab = true,
+  showCloudTab = true,
 }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(260);
@@ -65,13 +69,20 @@ export function Sidebar({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const menuItems = [
+  const allMenuItems = [
     { id: "home", label: "Home", icon: Home, color: "#8B5CF6" },
-    { id: "movies", label: "Movies", icon: Film, color: "#EC4899" },
-    { id: "tv", label: "TV Shows", icon: Tv, color: "#06B6D4" },
+    { id: "local", label: "Local", icon: HardDrive, color: "#EC4899" },
+    { id: "cloud", label: "Google Drive", icon: Cloud, color: "#06B6D4" },
     { id: "stream", label: "Discover", icon: Globe, color: "#10B981" },
     { id: "history", label: "History", icon: History, color: "#F59E0B" },
   ];
+
+  // Filter menu items based on visibility settings
+  const menuItems = allMenuItems.filter(item => {
+    if (item.id === 'local' && !showLocalTab) return false;
+    if (item.id === 'cloud' && !showCloudTab) return false;
+    return true;
+  });
 
   return (
     <motion.aside

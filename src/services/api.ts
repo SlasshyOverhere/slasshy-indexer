@@ -19,14 +19,26 @@ export interface MediaItem {
     tmdb_id?: string;
     episode_title?: string;
     still_path?: string;
+    // Cloud storage fields
+    is_cloud?: boolean;
+    cloud_file_id?: string;
 }
 
 export interface Config {
     mpv_path?: string;
+    vlc_path?: string;
     ffprobe_path?: string;
+    ffmpeg_path?: string;
     media_folders: string[];
     tmdb_api_key?: string;
     file_watcher_enabled?: boolean;
+    // Cloud cache settings
+    cloud_cache_enabled?: boolean;
+    cloud_cache_dir?: string;
+    cloud_cache_max_mb?: number;
+    cloud_cache_expiry_hours?: number;
+    // Cloud auto-scan interval in minutes
+    cloud_scan_interval_minutes?: number;
 }
 
 export interface ResumeInfo {
@@ -44,6 +56,9 @@ export interface StreamInfo {
     poster?: string;
     duration_seconds?: number;
     resume_position_seconds?: number;
+    // Cloud streaming fields
+    is_cloud?: boolean;
+    access_token?: string;
 }
 
 // Get library items (movies or TV shows)
@@ -56,6 +71,25 @@ export const getLibrary = async (type: 'movie' | 'tv', search: string = ''): Pro
         return items;
     } catch (error) {
         console.error('Failed to get library:', error);
+        return [];
+    }
+};
+
+// Get library items filtered by cloud status
+export const getLibraryFiltered = async (
+    type: 'movie' | 'tv',
+    search: string = '',
+    isCloud?: boolean
+): Promise<MediaItem[]> => {
+    try {
+        const items = await invoke<MediaItem[]>('get_library_filtered', {
+            mediaType: type,
+            search: search || null,
+            isCloud: isCloud ?? null
+        });
+        return items;
+    } catch (error) {
+        console.error('Failed to get filtered library:', error);
         return [];
     }
 };
@@ -218,6 +252,16 @@ export const cleanupMissingMetadata = async (): Promise<CleanupResponse> => {
     }
 };
 
+// Repair broken file paths - finds files in media folders and updates database
+export const repairFilePaths = async (): Promise<{ message: string }> => {
+    try {
+        return await invoke<{ message: string }>('repair_file_paths');
+    } catch (error) {
+        console.error('Failed to repair file paths:', error);
+        throw error;
+    }
+};
+
 // Delete response type
 export interface DeleteResponse {
     success: boolean;
@@ -350,6 +394,55 @@ export const getStreamUrl = async (id: number): Promise<StreamInfo> => {
     }
 };
 
+// Get stream info with automatic transcoding support for incompatible formats
+export const getStreamUrlWithTranscode = async (id: number): Promise<StreamInfo> => {
+    try {
+        const info = await invoke<StreamInfo>('get_stream_info_with_transcode', { mediaId: id });
+        return info;
+    } catch (error) {
+        console.error('Failed to get stream info with transcode:', error);
+        throw error;
+    }
+};
+
+// Check if a file needs transcoding for HTML5 playback
+export const checkNeedsTranscode = async (filePath: string): Promise<boolean> => {
+    try {
+        return await invoke<boolean>('check_needs_transcode', { filePath });
+    } catch (error) {
+        console.error('Failed to check transcode needs:', error);
+        return false;
+    }
+};
+
+// Transcode response type
+export interface TranscodeResponse {
+    session_id: number;
+    stream_url: string;
+}
+
+// Start transcoding a video file
+export const startTranscodeStream = async (filePath: string, startTime?: number): Promise<TranscodeResponse> => {
+    try {
+        return await invoke<TranscodeResponse>('start_transcode_stream', {
+            filePath,
+            startTime: startTime || null
+        });
+    } catch (error) {
+        console.error('Failed to start transcode stream:', error);
+        throw error;
+    }
+};
+
+// Stop a transcoding session
+export const stopTranscodeStream = async (sessionId: number): Promise<void> => {
+    try {
+        await invoke('stop_transcode_stream', { sessionId });
+    } catch (error) {
+        console.error('Failed to stop transcode stream:', error);
+    }
+};
+
 // Update watch progress
 export const updateWatchProgress = async (id: number, currentTime: number, duration: number): Promise<void> => {
     try {
@@ -379,6 +472,16 @@ export const playMedia = async (id: number, resume: boolean): Promise<void> => {
         await invoke('play_with_mpv', { mediaId: id, resume });
     } catch (error) {
         console.error('Failed to play with MPV:', error);
+        throw error;
+    }
+};
+
+// Play media with VLC (external player)
+export const playWithVlc = async (id: number, resume: boolean): Promise<void> => {
+    try {
+        await invoke('play_with_vlc', { mediaId: id, resume });
+    } catch (error) {
+        console.error('Failed to play with VLC:', error);
         throw error;
     }
 };
@@ -425,7 +528,7 @@ export const getPosterUrl = (item: MediaItem): string | null => {
 };
 
 // Player preferences
-export type PlayerPreference = 'mpv' | 'builtin' | 'ask';
+export type PlayerPreference = 'mpv' | 'vlc' | 'builtin' | 'ask';
 
 export const getPlayerPreference = (): PlayerPreference => {
     return (localStorage.getItem('playerPreference') as PlayerPreference) || 'ask';
@@ -482,6 +585,9 @@ export interface TmdbEpisodeInfo {
     name: string;
     overview?: string;
     still_path?: string;
+    // Cloud storage fields
+    is_cloud?: boolean;
+    cloud_file_id?: string;
     air_date?: string;
     runtime?: number;
     vote_average?: number;
@@ -685,4 +791,87 @@ export const resetOnboarding = (): void => {
         console.error('Failed to reset onboarding:', error);
     }
 };
+
+// ==================== TAB VISIBILITY ====================
+
+const TAB_VISIBILITY_KEY = 'slasshy_tab_visibility';
+
+export interface TabVisibility {
+    showLocal: boolean;
+    showCloud: boolean;
+}
+
+// Get tab visibility settings
+export const getTabVisibility = (): TabVisibility => {
+    try {
+        const stored = localStorage.getItem(TAB_VISIBILITY_KEY);
+        if (stored) {
+            return JSON.parse(stored);
+        }
+    } catch (error) {
+        console.error('Failed to get tab visibility:', error);
+    }
+    // Default: show both tabs
+    return { showLocal: true, showCloud: true };
+};
+
+// Save tab visibility settings
+export const setTabVisibility = (visibility: TabVisibility): void => {
+    try {
+        localStorage.setItem(TAB_VISIBILITY_KEY, JSON.stringify(visibility));
+    } catch (error) {
+        console.error('Failed to save tab visibility:', error);
+    }
+};
+
+// ==================== CLOUD CACHE ====================
+
+export interface CloudCacheInfo {
+    enabled: boolean;
+    cache_dir: string | null;
+    total_size_bytes: number;
+    total_size_mb: number;
+    file_count: number;
+    max_size_mb: number;
+    expiry_hours: number;
+}
+
+// Get cloud cache info and statistics
+export const getCloudCacheInfo = async (): Promise<CloudCacheInfo> => {
+    try {
+        return await invoke<CloudCacheInfo>('get_cloud_cache_info');
+    } catch (error) {
+        console.error('Failed to get cloud cache info:', error);
+        return {
+            enabled: false,
+            cache_dir: null,
+            total_size_bytes: 0,
+            total_size_mb: 0,
+            file_count: 0,
+            max_size_mb: 1024,
+            expiry_hours: 24,
+        };
+    }
+};
+
+// Clean up expired cache files
+export const cleanupCloudCache = async (): Promise<{ message: string }> => {
+    try {
+        return await invoke<{ message: string }>('cleanup_cloud_cache');
+    } catch (error) {
+        console.error('Failed to cleanup cloud cache:', error);
+        throw error;
+    }
+};
+
+// Clear all cloud cache
+export const clearCloudCache = async (): Promise<{ message: string }> => {
+    try {
+        return await invoke<{ message: string }>('clear_cloud_cache');
+    } catch (error) {
+        console.error('Failed to clear cloud cache:', error);
+        throw error;
+    }
+};
+
 

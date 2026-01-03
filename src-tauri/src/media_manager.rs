@@ -776,6 +776,35 @@ pub fn parse_filename(path: &Path) -> ParsedMedia {
     movie
 }
 
+/// Parse a cloud filename (no folder context available)
+/// Used for Google Drive files where we only have the filename
+pub fn parse_cloud_filename(filename: &str) -> ParsedMedia {
+    // Remove file extension
+    let filename_without_ext = filename
+        .rsplit_once('.')
+        .map(|(name, _)| name)
+        .unwrap_or(filename);
+
+    println!("[CLOUD_PARSE] Parsing cloud filename: '{}'", filename_without_ext);
+
+    // Try to parse as TV episode first
+    if let Some(parsed) = try_parse_tv_episode(filename_without_ext, &FolderContext {
+        series_name: None,
+        series_year: None,
+        folder_season: None,
+        is_tv_structure: false,
+    }) {
+        println!("[CLOUD_PARSE] Detected as TV: title='{}', S{:02}E{:02}",
+                 parsed.title, parsed.season.unwrap_or(0), parsed.episode.unwrap_or(0));
+        return parsed;
+    }
+
+    // Parse as movie
+    let movie = parse_as_movie(filename_without_ext);
+    println!("[CLOUD_PARSE] Detected as Movie: title='{}', year={:?}", movie.title, movie.year);
+    movie
+}
+
 /// Analyze the folder structure to extract series name, season, and determine if it's a TV structure
 fn analyze_folder_structure(path: &Path) -> FolderContext {
     let mut ctx = FolderContext {

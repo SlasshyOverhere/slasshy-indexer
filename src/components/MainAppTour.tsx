@@ -29,24 +29,24 @@ export function MainAppTour({ isActive, onComplete, onSkip, setView }: MainAppTo
       action: () => setView('home'),
     },
 
-    // Movies Tab
+    // Local Tab
     {
-      id: 'nav-movies',
-      target: '[data-tour="nav-movies"]',
-      title: 'Movies Library',
-      description: 'Browse all your movies here. Use the search bar to filter, and switch between grid/list views. Your entire movie collection in one place.',
+      id: 'nav-local',
+      target: '[data-tour="nav-local"]',
+      title: 'Local Library',
+      description: 'Browse all your local movies and TV shows here. Use the sub-tabs to switch between Movies and TV Shows. Search, filter, and switch between grid/list views.',
       position: 'right',
-      action: () => setView('movies'),
+      action: () => setView('local'),
     },
 
-    // TV Shows Tab
+    // Google Drive Tab
     {
-      id: 'nav-tv',
-      target: '[data-tour="nav-tv"]',
-      title: 'TV Shows Library',
-      description: 'All your TV series organized by show. Click on any series to browse seasons and episodes. Perfect for binge-watching!',
+      id: 'nav-cloud',
+      target: '[data-tour="nav-cloud"]',
+      title: 'Google Drive',
+      description: 'Access your cloud media from Google Drive! Connect your account in Settings, add folders, and stream directly without downloading.',
       position: 'right',
-      action: () => setView('tv'),
+      action: () => setView('cloud'),
     },
 
     // Discover Tab
@@ -83,24 +83,24 @@ export function MainAppTour({ isActive, onComplete, onSkip, setView }: MainAppTo
       id: 'settings-btn',
       target: '[data-tour="settings-btn"]',
       title: 'Settings',
-      description: 'Configure your media folders, TMDB API key, player settings, and more. This is where you set up Slasshy to work with your library.',
+      description: 'Configure your media folders, TMDB API key, Google Drive, player settings, and more. This is where you set up Slasshy to work with your library.',
       position: 'right',
     },
 
-    // Context Menu Info (shown on movies view)
+    // Context Menu Info (shown on local view)
     {
       id: 'context-menu-info',
-      target: '[data-tour="nav-movies"]',
+      target: '[data-tour="nav-local"]',
       title: 'Right-Click for More Options!',
       description: 'Right-click on any movie or TV show card to access quick actions: Play, Fix Match (correct wrong metadata), Remove from History, or Delete from Drive.',
       position: 'right',
-      action: () => setView('movies'),
+      action: () => setView('local'),
     },
 
     // Fix Match Explanation
     {
       id: 'fix-match-info',
-      target: '[data-tour="nav-movies"]',
+      target: '[data-tour="nav-local"]',
       title: 'Wrong Poster or Title?',
       description: 'If a movie/show has the wrong artwork or info, right-click and select "Fix Match". You can search TMDB and pick the correct match to update all metadata.',
       position: 'right',
@@ -115,14 +115,14 @@ export function MainAppTour({ isActive, onComplete, onSkip, setView }: MainAppTo
       position: 'right',
     },
 
-    // Episode Metadata Tip
+    // Sub-tabs Tip
     {
-      id: 'episode-tip',
-      target: '[data-tour="nav-tv"]',
-      title: 'Missing Episode Banners?',
-      description: 'Episode artwork depends on TMDB data. If episodes are missing banners, the show might have incomplete data on TMDB. You can contribute to TMDB to help!',
+      id: 'subtabs-tip',
+      target: '[data-tour="nav-local"]',
+      title: 'Movies & TV Sub-tabs',
+      description: 'When viewing Local or Google Drive, use the floating tabs at the top to switch between Movies and TV Shows quickly!',
       position: 'right',
-      action: () => setView('tv'),
+      action: () => setView('local'),
     },
 
     // Final Step

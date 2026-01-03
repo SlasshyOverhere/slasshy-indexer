@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { X, Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, SkipBack, SkipForward, Settings, Loader2 } from 'lucide-react'
+import { X, Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, SkipBack, SkipForward, Settings, Loader2, AlertTriangle } from 'lucide-react'
 import { Slider } from '@/components/ui/slider'
 import { invoke } from '@tauri-apps/api/tauri'
 
@@ -10,9 +10,14 @@ interface VideoPlayerProps {
     onClose: () => void
     onProgress?: (currentTime: number, duration: number) => void
     initialTime?: number
+    // Cloud streaming fields
+    isCloud?: boolean
+    accessToken?: string
+    // Media ID for transcoding fallback
+    mediaId?: number
 }
 
-export function VideoPlayer({ src, title, poster, onClose, onProgress, initialTime = 0 }: VideoPlayerProps) {
+export function VideoPlayer({ src, title, poster, onClose, onProgress, initialTime = 0, isCloud = false, accessToken, mediaId }: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     const progressReportRef = useRef<number>(0)
@@ -29,25 +34,100 @@ export function VideoPlayer({ src, title, poster, onClose, onProgress, initialTi
     const [videoSrc, setVideoSrc] = useState<string | null>(null)
     const blobUrlRef = useRef<string | null>(null)
 
+    // Transcoding state
+    const [isTranscoding, setIsTranscoding] = useState(false)
+    const [transcodeAttempted, setTranscodeAttempted] = useState(false)
+
     const hideControlsTimeout = useRef<NodeJS.Timeout | null>(null)
+
+    // Attempt to start transcoding when playback fails
+    const attemptTranscode = useCallback(async (filePath: string) => {
+        if (transcodeAttempted || isCloud) {
+            console.log('[VideoPlayer] Transcoding already attempted or is cloud file, skipping');
+            return false;
+        }
+
+        setTranscodeAttempted(true);
+        setIsTranscoding(true);
+        setError(null);
+        setIsLoading(true);
+
+        console.log('[VideoPlayer] Attempting to transcode file:', filePath);
+
+        try {
+            // Try to start transcoding
+            const result = await invoke<{ session_id: number; stream_url: string }>('start_transcode_stream', {
+                filePath: filePath,
+                startTime: initialTime > 0 ? initialTime : null
+            });
+
+            console.log('[VideoPlayer] Transcoding started:', result);
+            setVideoSrc(result.stream_url);
+            setIsTranscoding(false);
+            return true;
+        } catch (e) {
+            console.error('[VideoPlayer] Transcoding failed:', e);
+            setIsTranscoding(false);
+            setError(`Transcoding failed: ${e}. Please configure FFmpeg in Settings > Player, or use MPV/VLC player.`);
+            setIsLoading(false);
+            return false;
+        }
+    }, [transcodeAttempted, isCloud, initialTime]);
 
     // Load video file as blob URL using Tauri commands
     useEffect(() => {
         let cancelled = false;
 
         async function loadVideo() {
-            console.log('[VideoPlayer] Loading video from:', src);
+            console.log('[VideoPlayer] ========== LOADING VIDEO ==========');
+            console.log('[VideoPlayer] Source:', src);
+            console.log('[VideoPlayer] isCloud:', isCloud);
+            console.log('[VideoPlayer] accessToken:', accessToken ? 'present' : 'none');
+            console.log('[VideoPlayer] mediaId:', mediaId);
+            console.log('[VideoPlayer] initialTime:', initialTime);
+
+            // Reset state
+            setError(null);
+            setIsLoading(true);
 
             // If it's already a URL (http/https/blob), use it directly
             if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('blob:')) {
+                console.log('[VideoPlayer] Using URL directly (HTTP/HTTPS/Blob)');
                 setVideoSrc(src);
+                setIsLoading(false);
                 return;
             }
 
+            // Check file extension
+            const ext = src.split('.').pop()?.toLowerCase();
+            console.log('[VideoPlayer] File extension:', ext);
+
+            // Known formats that typically need transcoding
+            const needsTranscode = ['mkv', 'avi', 'wmv', 'flv', 'mov', 'm2ts', 'ts', 'vob', 'divx', 'xvid', 'rmvb', 'rm'];
+
+            if (needsTranscode.includes(ext || '')) {
+                console.log('[VideoPlayer] File needs transcoding based on extension');
+                // Try transcoding directly
+                const success = await attemptTranscode(src);
+                if (!success && !cancelled) {
+                    setError(`This video format (${ext?.toUpperCase()}) requires FFmpeg transcoding. Please configure FFmpeg in Settings > Player, or use MPV/VLC player instead.`);
+                    setIsLoading(false);
+                }
+                return;
+            }
+
+            // For MP4/WebM/M4V - try loading as blob first
             try {
+                console.log('[VideoPlayer] Attempting to load as blob...');
+
                 // Get file size first
                 const fileSize = await invoke<number>('get_video_file_size', { filePath: src });
-                console.log('[VideoPlayer] File size:', fileSize);
+                console.log('[VideoPlayer] File size:', fileSize, 'bytes', `(${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+
+                // For very large files (>4GB), warn user
+                if (fileSize > 4 * 1024 * 1024 * 1024) {
+                    console.log('[VideoPlayer] Large file detected (>4GB), may take time to load');
+                }
 
                 // Read file in chunks and create blob
                 const chunkSize = 10 * 1024 * 1024; // 10MB chunks
@@ -55,7 +135,10 @@ export function VideoPlayer({ src, title, poster, onClose, onProgress, initialTi
                 let offset = 0;
 
                 while (offset < fileSize) {
-                    if (cancelled) return;
+                    if (cancelled) {
+                        console.log('[VideoPlayer] Loading cancelled');
+                        return;
+                    }
 
                     const chunk = await invoke<number[]>('read_video_chunk', {
                         filePath: src,
@@ -66,18 +149,20 @@ export function VideoPlayer({ src, title, poster, onClose, onProgress, initialTi
                     chunks.push(new Uint8Array(chunk));
                     offset += chunk.length;
 
-                    console.log(`[VideoPlayer] Loaded ${Math.round(offset / fileSize * 100)}%`);
+                    const percent = Math.round(offset / fileSize * 100);
+                    if (percent % 20 === 0) {
+                        console.log(`[VideoPlayer] Loading... ${percent}%`);
+                    }
                 }
 
                 if (cancelled) return;
 
                 // Determine MIME type based on file extension
-                const ext = src.split('.').pop()?.toLowerCase();
                 let mimeType = 'video/mp4';
-                if (ext === 'mkv') mimeType = 'video/x-matroska';
-                else if (ext === 'webm') mimeType = 'video/webm';
-                else if (ext === 'avi') mimeType = 'video/x-msvideo';
-                else if (ext === 'mov') mimeType = 'video/quicktime';
+                if (ext === 'webm') mimeType = 'video/webm';
+                else if (ext === 'm4v') mimeType = 'video/mp4';
+
+                console.log('[VideoPlayer] Creating blob with MIME type:', mimeType);
 
                 // Create blob and URL
                 const blob = new Blob(chunks as BlobPart[], { type: mimeType });
@@ -91,8 +176,9 @@ export function VideoPlayer({ src, title, poster, onClose, onProgress, initialTi
 
                 console.log('[VideoPlayer] Created blob URL:', url);
                 setVideoSrc(url);
+                // Note: isLoading will be set to false when video canPlay event fires
             } catch (e) {
-                console.error('[VideoPlayer] Failed to load video:', e);
+                console.error('[VideoPlayer] Failed to load video as blob:', e);
                 if (!cancelled) {
                     setError(`Failed to load video: ${e}`);
                     setIsLoading(false);
@@ -110,10 +196,33 @@ export function VideoPlayer({ src, title, poster, onClose, onProgress, initialTi
                 blobUrlRef.current = null;
             }
         };
-    }, [src]);
+    }, [src, isCloud, accessToken, attemptTranscode]);
 
-    // Debug logging
-    console.log('[VideoPlayer] Current videoSrc:', videoSrc);
+    // Handle video playback error - try transcoding as fallback
+    const handleVideoError = useCallback(async (e: React.SyntheticEvent<HTMLVideoElement>) => {
+        const video = e.currentTarget;
+        const errorCode = video.error?.code;
+        const errorMessage = video.error?.message || 'Unknown error';
+
+        console.error('[VideoPlayer] ========== VIDEO ERROR ==========');
+        console.error('[VideoPlayer] Error code:', errorCode);
+        console.error('[VideoPlayer] Error message:', errorMessage);
+        console.error('[VideoPlayer] Video src:', videoSrc);
+        console.error('[VideoPlayer] Original src:', src);
+
+        // Error code 4 = MEDIA_ERR_SRC_NOT_SUPPORTED (format/codec not supported)
+        if (errorCode === 4 && !transcodeAttempted && !isCloud && src && !src.startsWith('http')) {
+            console.log('[VideoPlayer] Format not supported, attempting transcoding...');
+            const success = await attemptTranscode(src);
+            if (success) {
+                return; // Transcoding started, don't show error yet
+            }
+        }
+
+        // Show error to user
+        setError(`Failed to play video: ${errorMessage}. Try using MPV or VLC player instead.`);
+        setIsLoading(false);
+    }, [videoSrc, src, transcodeAttempted, isCloud, attemptTranscode]);
 
     // Format time helper
     const formatTime = (seconds: number): string => {
@@ -298,26 +407,21 @@ export function VideoPlayer({ src, title, poster, onClose, onProgress, initialTi
                         setCurrentTime(videoRef.current.currentTime)
                     }
                 }}
-                onError={(e) => {
-                    console.error('Video load error:', e)
-                    console.error('Attempted video source:', videoSrc)
-                    const video = videoRef.current
-                    if (video?.error) {
-                        console.error('Video error code:', video.error.code, 'message:', video.error.message)
-                    }
-                    setError(`Failed to load video: ${video?.error?.message || 'Unknown error'}`)
-                }}
+                onError={handleVideoError}
                 onEnded={onClose}
                 autoPlay
             />
 
             {/* Loading spinner */}
-            {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-10 transition-opactiy duration-300">
+            {(isLoading || isTranscoding) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm z-10 transition-opacity duration-300">
                     <div className="relative">
                         <Loader2 className="h-16 w-16 animate-spin text-primary" />
                         <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full" />
                     </div>
+                    {isTranscoding && (
+                        <p className="text-white mt-4 text-sm">Transcoding video for playback...</p>
+                    )}
                 </div>
             )}
 
@@ -325,7 +429,7 @@ export function VideoPlayer({ src, title, poster, onClose, onProgress, initialTi
             {error && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-md text-white z-20 p-8 text-center">
                     <div className="bg-destructive/10 p-4 rounded-full mb-4">
-                        <X className="w-12 h-12 text-destructive" />
+                        <AlertTriangle className="w-12 h-12 text-destructive" />
                     </div>
                     <p className="text-xl font-semibold mb-2">Video Error</p>
                     <p className="text-muted-foreground mb-6 max-w-md">{error}</p>
