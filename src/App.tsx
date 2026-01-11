@@ -156,7 +156,6 @@ function App() {
 
   // Cloud connection state for contextual empty states
   const [isGDriveConnected, setIsGDriveConnected] = useState(false)
-  const [hasCloudFolders, setHasCloudFolders] = useState(false)
 
   // Check onboarding status and load tab visibility on mount
   useEffect(() => {
@@ -194,19 +193,12 @@ function App() {
   // Check GDrive connection status for contextual empty states
   const checkGDriveStatus = async () => {
     try {
-      const { isGDriveConnected: checkConnected, getCloudFolders } = await import('@/services/gdrive')
+      const { isGDriveConnected: checkConnected } = await import('@/services/gdrive')
       const connected = await checkConnected()
       setIsGDriveConnected(connected)
-      if (connected) {
-        const folders = await getCloudFolders()
-        setHasCloudFolders(folders.length > 0)
-      } else {
-        setHasCloudFolders(false)
-      }
     } catch (error) {
       console.log('[GDrive] Status check failed:', error)
       setIsGDriveConnected(false)
-      setHasCloudFolders(false)
     }
   }
 
