@@ -1,12 +1,18 @@
 # Slasshy Desktop
 
-A modern, high-performance media library manager built with **Tauri**, **Rust**, and **React**. Automatically indexes your local video collection, fetches rich metadata from TMDB, and provides seamless playback through **MPV**.
+A modern, high-performance media library manager built with **Tauri**, **Rust**, and **React**. Automatically indexes your local video collection and Google Drive, fetches rich metadata from TMDB, and provides seamless playback through **MPV**.
+
+![Monochrome Design](https://img.shields.io/badge/design-monochrome-black?style=flat-square)
+![Tauri](https://img.shields.io/badge/Tauri-v1-blue?style=flat-square)
+![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square)
 
 ## Features
 
 ### Library Management
 - **Automatic Indexing** - Scans your media folders and organizes Movies & TV Shows automatically
+- **Google Drive Integration** - Index your entire Google Drive with one click
 - **Smart File Watcher** - Detects new files in real-time and indexes them instantly (toggleable)
+- **Cloud Change Detection** - Monitors Google Drive for new content using Changes API
 - **Incremental Updates** - Only indexes new content, skips already-indexed files
 - **Orphan Cleanup** - Automatically removes entries for deleted files
 
@@ -23,7 +29,7 @@ A modern, high-performance media library manager built with **Tauri**, **Rust**,
 - **Streaming Support** - Built-in Videasy player for online content
 
 ### User Experience
-- **Modern UI** - Clean interface with glassmorphism and smooth animations
+- **Monochrome UI** - Sleek black & white design with smooth animations
 - **System Tray** - Runs in background with Windows notifications for new content
 - **Onboarding** - Guided setup for first-time users
 - **Context Menus** - Right-click actions for quick operations
@@ -37,6 +43,7 @@ A modern, high-performance media library manager built with **Tauri**, **Rust**,
 | Database | SQLite (rusqlite) |
 | Playback | MPV (via IPC) |
 | Metadata | TMDB API |
+| Cloud | Google Drive API |
 
 ## Supported Formats
 
@@ -55,7 +62,7 @@ A modern, high-performance media library manager built with **Tauri**, **Rust**,
 
 ```bash
 # Clone the repository
-git clone https://github.com/YourUsername/slasshy-desktop.git
+git clone https://github.com/SlasshyOverhere/slasshy-indexer.git
 cd slasshy-desktop
 
 # Install dependencies
@@ -81,11 +88,13 @@ Installers will be generated in `src-tauri/target/release/bundle/`
 ### First Launch
 1. Complete the onboarding wizard
 2. Add your media folders (Movies, TV Shows)
-3. Enter your TMDB API key (optional, for metadata)
-4. Click "Scan Library" to index your content
+3. Connect Google Drive (optional) for cloud media
+4. Enter your TMDB API key (optional, for metadata)
+5. Click "Scan Library" to index your content
 
 ### Settings
 - **Media Folders** - Add/remove directories to scan
+- **Google Drive** - Connect/disconnect cloud storage
 - **TMDB API Key** - Required for poster and metadata fetching
 - **Auto Indexer** - Toggle real-time file watching
 - **Player Preferences** - Configure MPV behavior
@@ -95,6 +104,11 @@ Installers will be generated in `src-tauri/target/release/bundle/`
 2. Go to Settings > API
 3. Request an API key (free for personal use)
 4. Copy the "API Read Access Token" into Slasshy settings
+
+### Google Drive Setup
+1. Click "Connect Google Drive" in Settings
+2. Authorize Slasshy to access your Drive
+3. Use "Index Drive" button in sidebar to scan your cloud media
 
 ## Project Structure
 
@@ -110,6 +124,7 @@ slasshy-desktop/
 │   │   ├── database.rs    # SQLite operations
 │   │   ├── media_manager.rs # Scanning & indexing
 │   │   ├── watcher.rs     # File system watcher
+│   │   ├── gdrive.rs      # Google Drive API client
 │   │   ├── tmdb.rs        # TMDB API client
 │   │   └── mpv_ipc.rs     # MPV player control
 │   └── tauri.conf.json    # Tauri configuration
@@ -119,11 +134,19 @@ slasshy-desktop/
 ## How It Works
 
 1. **Scanning** - Walks through configured media folders finding video files
-2. **Parsing** - Extracts title, year, season/episode from filenames
-3. **Metadata Fetch** - Queries TMDB for rich metadata and downloads images
-4. **Database Storage** - Stores everything in local SQLite for fast access
-5. **Duplicate Detection** - Uses normalized path comparison to skip already-indexed content
-6. **Playback** - Launches MPV with IPC for progress tracking and resume support
+2. **Cloud Sync** - Monitors Google Drive for changes using Changes API
+3. **Parsing** - Extracts title, year, season/episode from filenames
+4. **Metadata Fetch** - Queries TMDB for rich metadata and downloads images
+5. **Database Storage** - Stores everything in local SQLite for fast access
+6. **Duplicate Detection** - Uses normalized path comparison to skip already-indexed content
+7. **Playback** - Launches MPV with IPC for progress tracking and resume support
+
+## What's New in v3.0.0
+
+- **Monochrome Design** - Complete UI overhaul with black/white/grayscale aesthetic
+- **Full Drive Indexing** - Index entire Google Drive with one click
+- **Simplified Cloud Settings** - Removed folder-based cloud management
+- **Improved Change Detection** - Better Google Drive sync with Changes API
 
 ## Contributing
 
@@ -144,4 +167,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [Tauri](https://tauri.app/) - Desktop app framework
 - [MPV](https://mpv.io/) - Media player
 - [TMDB](https://www.themoviedb.org/) - Metadata provider
+- [Google Drive API](https://developers.google.com/drive) - Cloud storage
 - [Radix UI](https://www.radix-ui.com/) - UI primitives
