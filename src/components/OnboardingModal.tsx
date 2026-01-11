@@ -50,7 +50,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
       subtitle: "Your Personal Media Center",
       description: "Organize, discover, and enjoy your movies and TV shows in one beautiful place.",
       icon: <Play className="w-8 h-8" />,
-      color: "#8B5CF6",
+      color: "#FFFFFF",
       visual: (
         <div className="relative w-full h-48 flex items-center justify-center">
           {/* Animated logo */}
@@ -60,22 +60,22 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
             transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
           >
             <motion.div
-              className="absolute inset-0 rounded-3xl bg-gradient-to-br from-primary to-accent blur-3xl opacity-40"
+              className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/30 to-gray-500/30 blur-3xl opacity-40"
               animate={{ scale: [1, 1.2, 1] }}
               transition={{ duration: 3, repeat: Infinity }}
             />
-            <div className="relative w-24 h-24 rounded-3xl bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center shadow-2xl border border-white/20">
-              <Play className="w-10 h-10 text-white fill-white ml-1" />
+            <div className="relative w-24 h-24 rounded-3xl bg-gradient-to-br from-white to-gray-600 flex items-center justify-center shadow-2xl border border-white/20">
+              <Play className="w-10 h-10 text-black fill-black ml-1" />
             </div>
           </motion.div>
 
           {/* Floating orbs */}
           <motion.div
-            className="absolute top-4 left-1/4 w-16 h-16 rounded-full bg-primary/20 blur-xl"
+            className="absolute top-4 left-1/4 w-16 h-16 rounded-full bg-white/20 blur-xl"
             animate={floatingAnimation}
           />
           <motion.div
-            className="absolute bottom-8 right-1/4 w-20 h-20 rounded-full bg-accent/20 blur-xl"
+            className="absolute bottom-8 right-1/4 w-20 h-20 rounded-full bg-gray-400/20 blur-xl"
             animate={{ ...floatingAnimation, transition: { ...floatingAnimation.transition, delay: 1 } }}
           />
         </div>
@@ -87,7 +87,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
       subtitle: "All Your Content, Organized",
       description: "Add your media folders and Slasshy will automatically organize your movies and TV shows with beautiful artwork.",
       icon: <Film className="w-8 h-8" />,
-      color: "#EC4899",
+      color: "#CCCCCC",
       features: [
         { icon: <FolderOpen className="w-4 h-4" />, text: "Scan local folders automatically" },
         { icon: <Star className="w-4 h-4" />, text: "Fetch artwork & metadata from TMDB" },
@@ -99,7 +99,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
           {[0, 1, 2].map((i) => (
             <motion.div
               key={i}
-              className="relative w-20 h-28 rounded-xl bg-gradient-to-br from-pink-500/20 to-violet-500/20 border border-white/10 overflow-hidden"
+              className="relative w-20 h-28 rounded-xl bg-gradient-to-br from-gray-500/20 to-gray-500/20 border border-white/10 overflow-hidden"
               initial={{ opacity: 0, y: 50, rotateY: -30 }}
               animate={{
                 opacity: 1,
@@ -118,7 +118,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
               />
               <div className={cn(
                 "absolute top-2 left-2 w-6 h-6 rounded-lg flex items-center justify-center",
-                i === 0 ? "bg-pink-500/30" : i === 1 ? "bg-violet-500/30" : "bg-blue-500/30"
+                i === 0 ? "bg-gray-500/30" : i === 1 ? "bg-gray-500/30" : "bg-gray-500/30"
               )}>
                 {i === 2 ? <Tv className="w-3 h-3" /> : <Film className="w-3 h-3" />}
               </div>
@@ -133,7 +133,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
       subtitle: "Explore New Content",
       description: "Browse trending movies and TV shows. Stream directly or find where to watch your favorites.",
       icon: <Globe className="w-8 h-8" />,
-      color: "#10B981",
+      color: "#AAAAAA",
       features: [
         { icon: <Search className="w-4 h-4" />, text: "Search millions of titles" },
         { icon: <Zap className="w-4 h-4" />, text: "Stream instantly online" },
@@ -147,28 +147,28 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
             animate={{ rotate: 360 }}
             transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
           >
-            <div className="w-32 h-32 rounded-full border-2 border-emerald-500/30 border-dashed" />
+            <div className="w-32 h-32 rounded-full border-2 border-gray-500/30 border-dashed" />
           </motion.div>
           <motion.div
             className="absolute"
             animate={{ rotate: -360 }}
             transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
           >
-            <div className="w-24 h-24 rounded-full border-2 border-cyan-500/30 border-dashed" />
+            <div className="w-24 h-24 rounded-full border-2 border-gray-500/30 border-dashed" />
           </motion.div>
           <motion.div
-            className="absolute w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 flex items-center justify-center border border-white/10"
+            className="absolute w-16 h-16 rounded-2xl bg-gradient-to-br from-gray-500/20 to-gray-500/20 flex items-center justify-center border border-white/10"
             animate={{ scale: [1, 1.1, 1] }}
             transition={{ duration: 2, repeat: Infinity }}
           >
-            <Globe className="w-8 h-8 text-emerald-400" />
+            <Globe className="w-8 h-8 text-gray-400" />
           </motion.div>
 
           {/* Floating content cards */}
           {[0, 1, 2, 3].map((i) => (
             <motion.div
               key={i}
-              className="absolute w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 border border-white/10"
+              className="absolute w-8 h-8 rounded-lg bg-gradient-to-br from-gray-500/20 to-gray-500/20 border border-white/10"
               style={{
                 top: `${20 + Math.sin(i * 1.5) * 30}%`,
                 left: `${15 + i * 20}%`,
@@ -193,7 +193,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
       subtitle: "Watch Your Way",
       description: "Resume exactly where you left off. Track your progress across all your content with smart resume.",
       icon: <MonitorPlay className="w-8 h-8" />,
-      color: "#F59E0B",
+      color: "#999999",
       features: [
         { icon: <Play className="w-4 h-4" />, text: "Play with MPV player" },
         { icon: <Clock className="w-4 h-4" />, text: "Smart resume from any device" },
@@ -203,7 +203,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
         <div className="relative w-full h-48 flex items-center justify-center">
           {/* Player mockup */}
           <motion.div
-            className="relative w-64 h-36 rounded-2xl bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-white/10 overflow-hidden"
+            className="relative w-64 h-36 rounded-2xl bg-gradient-to-br from-gray-500/10 to-gray-500/10 border border-white/10 overflow-hidden"
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={springConfig}
@@ -217,8 +217,8 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
               animate={{ scale: [1, 1.1, 1] }}
               transition={{ duration: 1.5, repeat: Infinity }}
             >
-              <div className="w-14 h-14 rounded-full bg-amber-500/80 flex items-center justify-center backdrop-blur-sm">
-                <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+              <div className="w-14 h-14 rounded-full bg-white/80 flex items-center justify-center backdrop-blur-sm">
+                <Play className="w-6 h-6 text-black fill-black ml-0.5" />
               </div>
             </motion.div>
 
@@ -226,7 +226,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
             <div className="absolute bottom-3 left-3 right-3">
               <div className="h-1.5 rounded-full bg-white/20 overflow-hidden">
                 <motion.div
-                  className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full"
+                  className="h-full bg-gradient-to-r from-gray-500 to-gray-400 rounded-full"
                   initial={{ width: "0%" }}
                   animate={{ width: "65%" }}
                   transition={{ duration: 2, delay: 0.5 }}
@@ -247,7 +247,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
       subtitle: "Let's Get Started",
       description: "Configure your settings and start enjoying your media collection. Welcome to Slasshy!",
       icon: <Rocket className="w-8 h-8" />,
-      color: "#8B5CF6",
+      color: "#FFFFFF",
       features: [
         { icon: <Settings className="w-4 h-4" />, text: "Add your TMDB API key for metadata" },
         { icon: <FolderOpen className="w-4 h-4" />, text: "Configure your media folders" },
@@ -269,12 +269,12 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
             }}
           >
             <motion.div
-              className="absolute -inset-8 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 blur-2xl"
+              className="absolute -inset-8 rounded-full bg-gradient-to-br from-white/30 to-gray-400/30 blur-2xl"
               animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
               transition={{ duration: 2, repeat: Infinity }}
             />
-            <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center shadow-2xl border border-white/20">
-              <Rocket className="w-10 h-10 text-white" />
+            <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-white to-gray-600 flex items-center justify-center shadow-2xl border border-white/20">
+              <Rocket className="w-10 h-10 text-black" />
             </div>
           </motion.div>
 
@@ -284,7 +284,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
               key={i}
               className="absolute w-2 h-2 rounded-full"
               style={{
-                background: i % 2 === 0 ? "#8B5CF6" : "#06B6D4",
+                background: i % 2 === 0 ? "#FFFFFF" : "#888888",
                 left: `${20 + Math.random() * 60}%`,
                 top: `${20 + Math.random() * 60}%`,
               }}
@@ -368,7 +368,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
               transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
             />
             <motion.div
-              className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-accent/10"
+              className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-gray-400/10"
               animate={{
                 scale: [1, 1.3, 1],
                 x: [0, -30, 0],
@@ -499,10 +499,10 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
                       onClick={() => handleStepClick(index)}
                       className="relative p-1"
                     >
-                      <motion.div
+                        <motion.div
                         className={cn(
                           "w-2 h-2 rounded-full transition-colors",
-                          index === currentStep ? "bg-primary" : "bg-white/20 hover:bg-white/40"
+                          index === currentStep ? "bg-white" : "bg-white/20 hover:bg-white/40"
                         )}
                         animate={index === currentStep ? { scale: [1, 1.2, 1] } : {}}
                         transition={{ duration: 1, repeat: Infinity }}

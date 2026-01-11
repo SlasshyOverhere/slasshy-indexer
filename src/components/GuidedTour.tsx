@@ -275,13 +275,13 @@ export function GuidedTour({ steps, isActive, onComplete, onSkip }: GuidedTourPr
                   width: targetRect.width + 16,
                   height: targetRect.height + 16,
                   borderRadius: '16px',
-                  border: '2px solid hsl(var(--primary))',
-                  boxShadow: '0 0 30px hsl(var(--primary) / 0.5), inset 0 0 20px hsl(var(--primary) / 0.1)',
+                  border: '2px solid rgba(255, 255, 255, 0.6)',
+                  boxShadow: '0 0 30px rgba(255, 255, 255, 0.3), inset 0 0 20px rgba(255, 255, 255, 0.1)',
                 }}
               >
                 {/* Animated pulse ring */}
                 <motion.div
-                  className="absolute inset-0 rounded-2xl border-2 border-primary/50"
+                  className="absolute inset-0 rounded-2xl border-2 border-white/50"
                   animate={{
                     scale: [1, 1.05, 1],
                     opacity: [0.5, 0, 0.5]
@@ -316,7 +316,7 @@ export function GuidedTour({ steps, isActive, onComplete, onSkip }: GuidedTourPr
               {/* Arrow */}
               <div
                 className={cn(
-                  "absolute w-4 h-4 bg-card border-l border-t border-primary/30 transform rotate-45",
+                  "absolute w-4 h-4 bg-card border-l border-t border-white/30 transform rotate-45",
                   tooltipPosition.arrowPosition === 'top' && "-top-2 left-1/2 -translate-x-1/2",
                   tooltipPosition.arrowPosition === 'bottom' && "-bottom-2 left-1/2 -translate-x-1/2 rotate-[225deg]",
                   tooltipPosition.arrowPosition === 'left' && "top-1/2 -left-2 -translate-y-1/2 -rotate-45",
@@ -325,21 +325,21 @@ export function GuidedTour({ steps, isActive, onComplete, onSkip }: GuidedTourPr
               />
 
               {/* Card content */}
-              <div className="relative rounded-2xl bg-card/95 backdrop-blur-xl border border-primary/30 shadow-2xl overflow-hidden">
+              <div className="relative rounded-2xl bg-card/95 backdrop-blur-xl border border-white/30 shadow-2xl overflow-hidden">
                 {/* Gradient accent */}
-                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-violet-500 to-accent" />
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-white via-gray-400 to-gray-600" />
 
                 {/* Header with step counter */}
                 <div className="flex items-center justify-between px-5 pt-4 pb-2">
                   <div className="flex items-center gap-2">
                     <motion.div
-                      className="p-1.5 rounded-lg bg-primary/20"
+                      className="p-1.5 rounded-lg bg-white/20"
                       animate={{ rotate: [0, 10, -10, 0] }}
                       transition={{ duration: 2, repeat: Infinity }}
                     >
-                      <Sparkles className="w-4 h-4 text-primary" />
+                      <Sparkles className="w-4 h-4 text-white" />
                     </motion.div>
-                    <span className="text-xs font-medium text-primary">
+                    <span className="text-xs font-medium text-white">
                       Step {currentStepIndex + 1} of {steps.length}
                     </span>
                   </div>
@@ -379,9 +379,9 @@ export function GuidedTour({ steps, isActive, onComplete, onSkip }: GuidedTourPr
                       className={cn(
                         "w-1.5 h-1.5 rounded-full transition-colors",
                         index === currentStepIndex
-                          ? "bg-primary"
+                          ? "bg-white"
                           : index < currentStepIndex
-                            ? "bg-primary/50"
+                            ? "bg-white/50"
                             : "bg-muted-foreground/30"
                       )}
                       animate={index === currentStepIndex ? { scale: [1, 1.3, 1] } : {}}
@@ -409,7 +409,7 @@ export function GuidedTour({ steps, isActive, onComplete, onSkip }: GuidedTourPr
                   <Button
                     size="sm"
                     onClick={handleNext}
-                    className="gap-1 bg-primary hover:bg-primary/90"
+                    className="gap-1 bg-white text-black hover:bg-gray-200"
                   >
                     {isLastStep ? (
                       <>

@@ -8,6 +8,23 @@ const MAX_RETRIES: u32 = 5;
 const BASE_DELAY_MS: u64 = 500;
 const MAX_DELAY_MS: u64 = 10000;
 
+// Default TMDB access token - loaded from build-time environment variable
+// This is a read-only token for fetching public movie/TV metadata
+fn get_default_tmdb_token() -> String {
+    option_env!("TMDB_ACCESS_TOKEN")
+        .map(|s| s.to_string())
+        .unwrap_or_default()
+}
+
+/// Get the TMDB credential to use - user's key if provided, otherwise default
+pub fn get_tmdb_credential(user_key: &str) -> String {
+    if user_key.is_empty() {
+        get_default_tmdb_token()
+    } else {
+        user_key.to_string()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TmdbMetadata {
     pub title: String,

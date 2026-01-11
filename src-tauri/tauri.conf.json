@@ -8,7 +8,7 @@
   },
   "package": {
     "productName": "Slasshy Media Indexer",
-    "version": "0.1.0"
+    "version": "3.0.0"
   },
   "tauri": {
     "allowlist": {
@@ -111,6 +111,7 @@
     },
     "windows": [
       {
+        "label": "main",
         "fullscreen": false,
         "height": 800,
         "resizable": true,

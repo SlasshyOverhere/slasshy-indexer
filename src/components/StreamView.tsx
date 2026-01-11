@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 // Videasy player base URL - opens directly in browser
 const VIDEASY_PLAYER_BASE = 'https://player.videasy.net';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
-const SLASSHY_COLOR = '8B5CF6'; // Slasshy brand purple
+const SLASSHY_COLOR = 'FFFFFF'; // Slasshy brand white (monochrome)
 
 // Build Videasy player URL with all features
 function buildVideasyUrl(
@@ -228,8 +228,8 @@ export function StreamView() {
                 {/* Search Section */}
                 <div className="max-w-3xl mx-auto w-full pt-4">
                     <div className="text-center mb-6">
-                        <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-primary/10 mb-4">
-                            <Play className="w-8 h-8 text-primary fill-primary" />
+                        <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-white/10 mb-4">
+                            <Play className="w-8 h-8 text-white fill-white" />
                         </div>
                         <h2 className="text-2xl font-bold text-foreground mb-2">Stream Online</h2>
                         <p className="text-sm text-muted-foreground">Search and stream movies & TV shows instantly</p>
@@ -249,7 +249,7 @@ export function StreamView() {
                                 autoFocus
                             />
                             {isSearching && (
-                                <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-primary" />
+                                <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin text-white" />
                             )}
                         </div>
                         <button
@@ -276,7 +276,7 @@ export function StreamView() {
                                 >
                                     <div className="section-header">
                                         <h3 className="section-title">
-                                            <Clock className="w-5 h-5 text-primary" />
+                                            <Clock className="w-5 h-5 text-white" />
                                             Recently Streamed
                                         </h3>
                                     </div>
@@ -308,21 +308,21 @@ export function StreamView() {
                                                         </div>
                                                     )}
                                                     <div className="media-card-overlay flex items-center justify-center">
-                                                        <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
-                                                            <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+                                                        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center">
+                                                            <Play className="w-5 h-5 text-black fill-black ml-0.5" />
                                                         </div>
                                                     </div>
                                                     {/* Badge */}
                                                     <div className={cn(
                                                         "absolute top-2 right-2 p-1 rounded-md",
                                                         item.media_type === 'movie'
-                                                            ? "bg-blue-500"
-                                                            : "bg-primary"
+                                                            ? "bg-gray-500"
+                                                            : "bg-white"
                                                     )}>
                                                         {item.media_type === 'movie' ? (
                                                             <Film className="w-3 h-3 text-white" />
                                                         ) : (
-                                                            <Tv className="w-3 h-3 text-white" />
+                                                            <Tv className="w-3 h-3 text-black" />
                                                         )}
                                                     </div>
                                                 </div>
@@ -420,14 +420,14 @@ export function StreamView() {
                                                         <span className={cn(
                                                             "px-2 py-0.5 rounded text-xs font-bold uppercase",
                                                             item.media_type === 'movie'
-                                                                ? 'bg-blue-500 text-white'
-                                                                : 'bg-primary text-white'
+                                                                ? 'bg-gray-500 text-white'
+                                                                : 'bg-white text-black'
                                                         )}>
                                                             {item.media_type}
                                                         </span>
                                                         {item.vote_average && item.vote_average > 0 && (
-                                                            <div className="flex items-center gap-1 text-xs text-yellow-400">
-                                                                <Star className="w-3 h-3 fill-yellow-400" />
+                                                            <div className="flex items-center gap-1 text-xs text-gray-400">
+                                                                <Star className="w-3 h-3 fill-gray-400" />
                                                                 {item.vote_average.toFixed(1)}
                                                             </div>
                                                         )}
@@ -441,9 +441,9 @@ export function StreamView() {
                                                 {/* Play button */}
                                                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                                     <div className="relative">
-                                                        <div className="absolute inset-0 rounded-full bg-primary/30 blur-xl scale-150" />
-                                                        <div className="relative w-14 h-14 rounded-full bg-primary flex items-center justify-center shadow-elevation-2">
-                                                            <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+                                                        <div className="absolute inset-0 rounded-full bg-white/30 blur-xl scale-150" />
+                                                        <div className="relative w-14 h-14 rounded-full bg-white flex items-center justify-center shadow-elevation-2">
+                                                            <Play className="w-6 h-6 text-black fill-black ml-0.5" />
                                                         </div>
                                                     </div>
                                                 </div>
@@ -452,13 +452,13 @@ export function StreamView() {
                                                 <div className={cn(
                                                     "absolute top-2 right-2 p-1.5 rounded-lg",
                                                     item.media_type === 'movie'
-                                                        ? 'bg-blue-500'
-                                                        : 'bg-primary'
+                                                        ? 'bg-gray-500'
+                                                        : 'bg-white'
                                                 )}>
                                                     {item.media_type === 'movie' ? (
                                                         <Film className="w-3 h-3 text-white" />
                                                     ) : (
-                                                        <Tv className="w-3 h-3 text-white" />
+                                                        <Tv className="w-3 h-3 text-black" />
                                                     )}
                                                 </div>
                                             </div>

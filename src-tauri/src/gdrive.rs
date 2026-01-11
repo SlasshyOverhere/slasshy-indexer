@@ -25,28 +25,33 @@ use crate::database::get_app_data_dir;
 
 // Read from environment or use defaults for development
 fn get_client_id() -> String {
-    std::env::var("GDRIVE_CLIENT_ID").unwrap_or_else(|_| {
-        // Default: You need to replace this with your actual client ID
-        "YOUR_CLIENT_ID.apps.googleusercontent.com".to_string()
-    })
+    std::env::var("GDRIVE_CLIENT_ID")
+        .ok()
+        .or_else(|| option_env!("GDRIVE_CLIENT_ID").map(|s| s.to_string()))
+        .unwrap_or_else(|| {
+            // Default: You need to replace this with your actual client ID
+            "YOUR_CLIENT_ID.apps.googleusercontent.com".to_string()
+        })
 }
 
 fn get_client_secret() -> String {
-    std::env::var("GDRIVE_CLIENT_SECRET").unwrap_or_else(|_| {
-        // Default: You need to replace this with your actual client secret
-        "YOUR_CLIENT_SECRET".to_string()
-    })
+    std::env::var("GDRIVE_CLIENT_SECRET")
+        .ok()
+        .or_else(|| option_env!("GDRIVE_CLIENT_SECRET").map(|s| s.to_string()))
+        .unwrap_or_else(|| {
+            // Default: You need to replace this with your actual client secret
+            "YOUR_CLIENT_SECRET".to_string()
+        })
 }
 
 // Production redirect URI - configurable via environment variable
 // Default: https://indexer-oauth-callback.vercel.app/
+// Production redirect URI
+// We use localhost callback for both Dev and Prod for a seamless experience.
+// This requires the user to add "http://localhost:8085/callback" to their
+// Google Cloud Console "Authorized redirect URIs".
 fn get_redirect_uri() -> String {
-    if is_dev_mode() {
-        return "http://localhost:8085/callback".to_string();
-    }
-    std::env::var("GDRIVE_REDIRECT_URI").unwrap_or_else(|_| {
-        "https://indexer-oauth-callback.vercel.app/".to_string()
-    })
+    "http://localhost:8085/callback".to_string()
 }
 
 // Check if we're in development mode
@@ -58,7 +63,8 @@ const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 
 // Google Drive API
 const DRIVE_API_BASE: &str = "https://www.googleapis.com/drive/v3";
-const DRIVE_SCOPES: &str = "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile";
+// Full drive access to allow file deletion
+const DRIVE_SCOPES: &str = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile";
 
 /// Stored OAuth tokens
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -421,6 +427,29 @@ impl GoogleDriveClient {
             .json()
             .await
             .map_err(|e| format!("Failed to parse response: {}", e))
+    }
+
+    /// Delete a file from Google Drive
+    pub async fn delete_file(&self, file_id: &str) -> Result<(), String> {
+        let access_token = self.get_access_token().await?;
+
+        let url = format!("{}/files/{}", DRIVE_API_BASE, file_id);
+
+        let response = self.http_client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", access_token))
+            .send()
+            .await
+            .map_err(|e| format!("Failed to delete file: {}", e))?;
+
+        // Google Drive API returns 204 No Content on successful deletion
+        if response.status().is_success() || response.status().as_u16() == 204 {
+            println!("[GDRIVE] Successfully deleted file: {}", file_id);
+            Ok(())
+        } else {
+            let error_text = response.text().await.unwrap_or_default();
+            Err(format!("Drive API delete error: {}", error_text))
+        }
     }
 
     /// Get account info

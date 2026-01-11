@@ -3633,13 +3633,14 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
 name = "slasshy-desktop"
-version = "0.1.0"
+version = "3.0.0"
 dependencies = [
  "base64 0.21.7",
  "chrono",
  "dashmap",
  "dirs 5.0.1",
  "dotenvy",
+ "futures-util",
  "lazy_static",
  "notify-rust",
  "oauth2",

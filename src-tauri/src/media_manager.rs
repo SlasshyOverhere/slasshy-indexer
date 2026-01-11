@@ -56,9 +56,10 @@ struct ScanProgressPayload {
 
 /// Cleanup orphaned media entries (files that no longer exist on disk)
 /// Returns the number of removed entries
+/// NOTE: This only cleans up LOCAL media - cloud media is never touched
 pub fn cleanup_orphaned_media(db: &Database, image_cache_dir: &str) -> usize {
-    println!("[CLEANUP] Checking for orphaned media entries...");
-    
+    println!("[CLEANUP] Checking for orphaned LOCAL media entries...");
+
     let all_media = match db.get_all_media() {
         Ok(items) => items,
         Err(e) => {
@@ -66,15 +67,26 @@ pub fn cleanup_orphaned_media(db: &Database, image_cache_dir: &str) -> usize {
             return 0;
         }
     };
-    
+
     let mut removed_count = 0;
     let mut cleaned_images: std::collections::HashSet<String> = std::collections::HashSet::new();
-    
+
     for item in all_media {
+        // SKIP CLOUD ENTRIES - they don't have local files
+        if item.is_cloud.unwrap_or(false) {
+            continue;
+        }
+
         if let Some(ref file_path) = item.file_path {
             // Check if this is a virtual path (used for consolidated TV shows)
             let is_virtual_path = file_path.starts_with("tvshow://");
-            
+
+            // Also skip gdrive: paths (cloud TV shows)
+            let is_cloud_path = file_path.starts_with("gdrive:");
+            if is_cloud_path {
+                continue;
+            }
+
             let should_remove = if item.media_type == "tvshow" {
                 if is_virtual_path {
                     // For virtual paths, check if the TV show has any episodes left
@@ -202,214 +214,24 @@ fn cleanup_image_directory(
     }
 }
 
+// Local folder scanning removed - app is now cloud-only
 // Optimized function with parallel file discovery and batched processing
+#[allow(dead_code)]
 pub fn scan_media_folders_with_events(
-    db: &Database,
-    config: &Config,
-    image_cache_dir: &str,
-    window: &tauri::Window
+    _db: &Database,
+    _config: &Config,
+    _image_cache_dir: &str,
+    _window: &tauri::Window
 ) {
-    println!("[SCAN] Starting optimized media scan with parallel processing...");
-
-    // First, cleanup orphaned media entries
-    cleanup_orphaned_media(db, image_cache_dir);
-
-    let api_key = config.tmdb_api_key.clone().unwrap_or_default();
-    if api_key.is_empty() {
-        println!("[SCAN] WARNING: TMDB API Key is empty! Metadata/posters will not be fetched.");
-    } else {
-        println!("[SCAN] TMDB API Key is configured.");
-    }
-
-    // Phase 1: Parallel file discovery - collect all video files first
-    println!("[SCAN] Phase 1: Discovering video files...");
-    let start_discovery = std::time::Instant::now();
-
-    let mut all_video_files: Vec<PathBuf> = Vec::new();
-
-    for folder in &config.media_folders {
-        if !Path::new(folder).exists() {
-            println!("[SCAN] Folder does not exist: {}", folder);
-            continue;
-        }
-
-        // Collect files in parallel using rayon
-        let folder_files: Vec<PathBuf> = WalkDir::new(folder)
-            .into_iter()
-            .par_bridge() // Use parallel iterator
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-            .filter(|e| {
-                e.path().extension()
-                    .and_then(|ext| ext.to_str())
-                    .map(|ext| VIDEO_EXTENSIONS.contains(&format!(".{}", ext.to_lowercase()).as_str()))
-                    .unwrap_or(false)
-            })
-            .map(|e| e.path().to_path_buf())
-            .collect();
-
-        all_video_files.extend(folder_files);
-    }
-
-    let discovery_time = start_discovery.elapsed();
-    println!("[SCAN] Discovered {} video files in {:?}", all_video_files.len(), discovery_time);
-
-    let total_files = all_video_files.len();
-    if total_files == 0 {
-        println!("[SCAN] No new files to process");
-        return;
-    }
-
-    // Phase 2: Filter out already indexed files (parallel check)
-    println!("[SCAN] Phase 2: Checking for already indexed files...");
-    let start_filter = std::time::Instant::now();
-
-    // Get all existing file paths from DB and normalize them for consistent comparison
-    let existing_paths: std::collections::HashSet<String> = db.get_all_file_paths()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|p| normalize_path(&p))
-        .collect();
-
-    let new_files: Vec<PathBuf> = all_video_files
-        .into_par_iter()
-        .filter(|path| {
-            let path_str = normalize_path(&path.to_string_lossy());
-            !existing_paths.contains(&path_str)
-        })
-        .collect();
-
-    let filter_time = start_filter.elapsed();
-    println!("[SCAN] {} new files to process (filtered in {:?})", new_files.len(), filter_time);
-
-    if new_files.is_empty() {
-        println!("[SCAN] All files already indexed");
-        return;
-    }
-
-    // Phase 3: Parse filenames in parallel
-    println!("[SCAN] Phase 3: Parsing filenames...");
-    let start_parse = std::time::Instant::now();
-
-    let parsed_files: Vec<(PathBuf, ParsedMedia)> = new_files
-        .par_iter()
-        .filter_map(|path| {
-            let parsed = parse_filename(path);
-            if parsed.title.is_empty() {
-                None
-            } else {
-                Some((path.clone(), parsed))
-            }
-        })
-        .collect();
-
-    let parse_time = start_parse.elapsed();
-    println!("[SCAN] Parsed {} files in {:?}", parsed_files.len(), parse_time);
-
-    // Phase 4: Process files (TMDB lookups - sequential to respect rate limits)
-    println!("[SCAN] Phase 4: Fetching metadata and indexing...");
-    let start_process = std::time::Instant::now();
-
-    let total_to_process = parsed_files.len();
-    let processed_count = Arc::new(AtomicUsize::new(0));
-
-    // Process in batches for better TMDB rate limit handling
-    const BATCH_SIZE: usize = 10;
-
-    for batch in parsed_files.chunks(BATCH_SIZE) {
-        // Process batch items (can be parallel for parsing, sequential for TMDB)
-        for (path, parsed) in batch {
-            let file_path = path.to_string_lossy().to_string();
-            let current = processed_count.fetch_add(1, Ordering::SeqCst) + 1;
-
-            // Emit progress event
-            let _ = window.emit("scan-progress", ScanProgressPayload {
-                title: parsed.title.clone(),
-                media_type: if parsed.media_type == MediaParseType::Movie { "movie" } else { "tv" }.to_string(),
-                current,
-                total: total_to_process,
-            });
-
-            // Get duration (skip for now, would need ffprobe or similar)
-            let duration = 0.0;
-
-            // Process based on type
-            if parsed.media_type == MediaParseType::TvEpisode {
-                process_tv_episode(db, &file_path, parsed, &api_key, image_cache_dir, duration);
-            } else {
-                process_movie(db, &file_path, parsed, &api_key, image_cache_dir, duration);
-            }
-        }
-
-        // Small delay between batches to avoid TMDB rate limits
-        if !api_key.is_empty() {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-    }
-
-    let process_time = start_process.elapsed();
-    println!("[SCAN] Processed {} files in {:?}", total_to_process, process_time);
-
-    let total_time = discovery_time + filter_time + parse_time + process_time;
-    println!("[SCAN] Media scan complete. Total time: {:?}", total_time);
+    // No-op: Local scanning removed, app uses cloud storage only
+    println!("[SCAN] Local scanning is disabled. Use cloud storage.");
 }
 
-// Keep the original function for backward compatibility
-pub fn scan_media_folders(db: &Database, config: &Config, image_cache_dir: &str) {
-    println!("Starting media scan...");
-    
-    let api_key = config.tmdb_api_key.clone().unwrap_or_default();
-    
-    for folder in &config.media_folders {
-        if !Path::new(folder).exists() {
-            println!("Folder does not exist: {}", folder);
-            continue;
-        }
-        
-        println!("Scanning folder: {}", folder);
-        
-        for entry in WalkDir::new(folder)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-        {
-            let path = entry.path();
-            let extension = path.extension()
-                .and_then(|e| e.to_str())
-                .map(|e| format!(".{}", e.to_lowercase()))
-                .unwrap_or_default();
-            
-            if !VIDEO_EXTENSIONS.contains(&extension.as_str()) {
-                continue;
-            }
-            
-            let file_path = path.to_string_lossy().to_string();
-            
-            // Skip if already indexed
-            if db.media_exists(&file_path).unwrap_or(false) {
-                continue;
-            }
-            
-            // Parse filename
-            let parsed = parse_filename(path);
-            if parsed.title.is_empty() {
-                println!("Could not parse: {}", file_path);
-                continue;
-            }
-            
-            // Get duration (skip for now, would need ffprobe or similar)
-            let duration = 0.0;
-            
-            // Process based on type
-            if parsed.media_type == MediaParseType::TvEpisode {
-                process_tv_episode(db, &file_path, &parsed, &api_key, image_cache_dir, duration);
-            } else {
-                process_movie(db, &file_path, &parsed, &api_key, image_cache_dir, duration);
-            }
-        }
-    }
-    
-    println!("Media scan complete.");
+// Local folder scanning removed - app is now cloud-only
+#[allow(dead_code)]
+pub fn scan_media_folders(_db: &Database, _config: &Config, _image_cache_dir: &str) {
+    // No-op: Local scanning removed, app uses cloud storage only
+    println!("[SCAN] Local scanning is disabled. Use cloud storage.");
 }
 
 pub fn process_movie(

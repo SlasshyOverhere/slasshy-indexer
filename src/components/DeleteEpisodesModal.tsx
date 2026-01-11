@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Trash2, Check, X, AlertTriangle, Loader2 } from "lucide-react";
+import { Trash2, Check, X, AlertTriangle, Loader2, FolderX } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Dialog,
@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { EpisodeDeleteInfo, getEpisodesForDelete, deleteMediaFiles } from "@/services/api";
+import { EpisodeDeleteInfo, getEpisodesForDelete, deleteMediaFiles, deleteSeriesCloudFolder } from "@/services/api";
 
 interface DeleteEpisodesModalProps {
     isOpen: boolean;
@@ -33,6 +33,7 @@ export function DeleteEpisodesModal({
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [isLoading, setIsLoading] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isDeletingFolder, setIsDeletingFolder] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // Load episodes when modal opens
@@ -101,6 +102,22 @@ export function DeleteEpisodesModal({
         }
     };
 
+    const handleDeleteFolder = async () => {
+        setIsDeletingFolder(true);
+        setError(null);
+
+        try {
+            await deleteSeriesCloudFolder(seriesId);
+            onDeleteComplete();
+            onClose();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to delete cloud folder");
+            console.error(err);
+        } finally {
+            setIsDeletingFolder(false);
+        }
+    };
+
     // Group episodes by season
     const episodesBySeason = episodes.reduce((acc, ep) => {
         const season = ep.season_number ?? 0;
@@ -136,31 +153,52 @@ export function DeleteEpisodesModal({
                         {selectedIds.size} of {episodes.length} selected
                     </span>
                     <div className="flex gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={selectAll}
-                            className="border-red-500/50 hover:bg-red-500/20 hover:text-red-400"
-                        >
-                            <Check className="w-4 h-4 mr-1" />
-                            Delete All
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={deselectAll}
-                            className="border-white/20 hover:bg-white/10"
-                        >
-                            <X className="w-4 h-4 mr-1" />
-                            Clear
-                        </Button>
+                        {episodes.length > 0 && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={selectAll}
+                                className="border-red-500/50 hover:bg-red-500/20 hover:text-red-400"
+                            >
+                                <Check className="w-4 h-4 mr-1" />
+                                Select All
+                            </Button>
+                        )}
+                        {episodes.length === 0 && !isLoading && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleDeleteFolder}
+                                disabled={isDeletingFolder || isDeleting}
+                                className="border-orange-500/50 hover:bg-orange-500/20 hover:text-orange-400"
+                                title="Delete the cloud folder from Google Drive (use if folder wasn't deleted automatically)"
+                            >
+                                {isDeletingFolder ? (
+                                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                ) : (
+                                    <FolderX className="w-4 h-4 mr-1" />
+                                )}
+                                Delete Folder
+                            </Button>
+                        )}
+                        {episodes.length > 0 && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={deselectAll}
+                                className="border-white/20 hover:bg-white/10"
+                            >
+                                <X className="w-4 h-4 mr-1" />
+                                Clear
+                            </Button>
+                        )}
                     </div>
                 </div>
 
                 <ScrollArea className="h-[400px] pr-4">
                     {isLoading ? (
                         <div className="flex items-center justify-center h-full">
-                            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                            <Loader2 className="w-8 h-8 animate-spin text-white" />
                         </div>
                     ) : error && episodes.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-center">
@@ -175,7 +213,7 @@ export function DeleteEpisodesModal({
                         <div className="space-y-4">
                             {sortedSeasons.map((season) => (
                                 <div key={season} className="space-y-2">
-                                    <h3 className="text-sm font-semibold text-primary/80 sticky top-0 bg-background/90 backdrop-blur-sm py-1">
+                                    <h3 className="text-sm font-semibold text-white/80 sticky top-0 bg-background/90 backdrop-blur-sm py-1">
                                         Season {season}
                                     </h3>
                                     <AnimatePresence>

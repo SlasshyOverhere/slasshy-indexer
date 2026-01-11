@@ -366,7 +366,7 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
                                         className={cn(
                                             "px-3 py-1.5 rounded-lg text-xs lg:text-sm font-medium transition-all duration-200",
                                             selectedSeason === season
-                                                ? "bg-primary text-primary-foreground"
+                                                ? "bg-white text-black"
                                                 : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
                                         )}
                                     >
@@ -436,8 +436,8 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
 
                                                                 {/* Play overlay */}
                                                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                    <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-primary flex items-center justify-center">
-                                                                        <Play className="w-4 h-4 lg:w-5 lg:h-5 text-white fill-white ml-0.5" />
+                                                                    <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-white flex items-center justify-center">
+                                                                        <Play className="w-4 h-4 lg:w-5 lg:h-5 text-black fill-black ml-0.5" />
                                                                     </div>
                                                                 </div>
 
@@ -445,7 +445,7 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
                                                                 {hasProgress && (
                                                                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
                                                                         <div
-                                                                            className="h-full bg-primary"
+                                                                            className="h-full bg-white"
                                                                             style={{ width: `${progress}%` }}
                                                                         />
                                                                     </div>
@@ -453,7 +453,7 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
 
                                                                 {/* Watched badge */}
                                                                 {isFinished && (
-                                                                    <div className="absolute top-1.5 right-1.5 lg:top-2 lg:right-2 px-1.5 py-0.5 rounded bg-emerald-500 text-white text-[10px] lg:text-xs font-medium flex items-center gap-1">
+                                                                    <div className="absolute top-1.5 right-1.5 lg:top-2 lg:right-2 px-1.5 py-0.5 rounded bg-gray-500 text-white text-[10px] lg:text-xs font-medium flex items-center gap-1">
                                                                         <Check className="w-2.5 h-2.5 lg:w-3 lg:h-3" />
                                                                     </div>
                                                                 )}
@@ -465,11 +465,11 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
                                                                 <div className="flex items-start justify-between gap-2">
                                                                     <div className="flex-1 min-w-0">
                                                                         <div className="flex items-center gap-2 mb-0.5 lg:mb-1">
-                                                                            <span className="text-[10px] lg:text-xs font-medium text-primary">
+                                                                            <span className="text-[10px] lg:text-xs font-medium text-white">
                                                                                 Episode {episode.episode_number}
                                                                             </span>
                                                                             {hasProgress && (
-                                                                                <span className="badge-primary flex items-center gap-1 text-[10px] lg:text-xs">
+                                                                                <span className="flex items-center gap-1 text-[10px] lg:text-xs px-1.5 py-0.5 rounded bg-white/15 text-white border border-white/20">
                                                                                     <Clock className="w-2.5 h-2.5 lg:w-3 lg:h-3" />
                                                                                     {Math.round(progress)}%
                                                                                 </span>
@@ -505,7 +505,7 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
                                                                         )}
                                                                         {tmdbData?.vote_average && tmdbData.vote_average > 0 && (
                                                                             <span className="flex items-center gap-1">
-                                                                                <Star className="w-2.5 h-2.5 lg:w-3 lg:h-3 text-amber-400 fill-amber-400" />
+                                                                                <Star className="w-2.5 h-2.5 lg:w-3 lg:h-3 text-gray-400 fill-gray-400" />
                                                                                 {tmdbData.vote_average.toFixed(1)}
                                                                             </span>
                                                                         )}
@@ -527,7 +527,7 @@ export function EpisodeBrowser({ show, onBack }: EpisodeBrowserProps) {
                                                                                     e.stopPropagation();
                                                                                     setExpandedEpisode(isExpanded ? null : episode.id);
                                                                                 }}
-                                                                                className="text-[10px] lg:text-xs text-primary hover:underline mt-1 flex items-center gap-0.5"
+                                                                                className="text-[10px] lg:text-xs text-white hover:underline mt-1 flex items-center gap-0.5"
                                                                             >
                                                                                 {isExpanded ? (
                                                                                     <>Show less <ChevronUp className="w-2.5 h-2.5 lg:w-3 lg:h-3" /></>

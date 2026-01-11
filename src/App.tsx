@@ -22,7 +22,6 @@ import {
   MediaItem,
   playMedia,
   getResumeInfo,
-  scanLibrary,
   ResumeInfo,
   getCachedImageUrl,
   StreamingHistoryItem,
@@ -114,7 +113,7 @@ function App() {
 
   // Modals
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'library' | 'cloud' | 'player' | 'api' | 'danger'>('general')
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'cloud' | 'player' | 'api' | 'danger'>('general')
   const [fixMatchOpen, setFixMatchOpen] = useState(false)
   const [itemToFix, setItemToFix] = useState<MediaItem | null>(null)
 
@@ -344,80 +343,9 @@ function App() {
     loadLibraryStats()
   }, [tabVisibility])
 
-  // Google Drive cloud change detection polling
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null
-    let isPolling = false
-
-    const pollForChanges = async () => {
-      if (isPolling) {
-        console.log('[GDrive] Skipping poll - already in progress')
-        return
-      }
-
-      isPolling = true
-      const pollStart = performance.now()
-
-      try {
-        // Dynamic import to avoid loading gdrive module if not needed
-        const { isGDriveConnected, getCloudFolders, checkCloudChanges } = await import('@/services/gdrive')
-
-        // Check if connected
-        const connected = await isGDriveConnected()
-        if (!connected) {
-          console.log('[GDrive] Not connected - skipping poll')
-          return
-        }
-
-        // Check if we have folders to monitor
-        const folders = await getCloudFolders()
-        if (folders.length === 0) {
-          console.log('[GDrive] No folders configured - skipping poll')
-          return
-        }
-
-        // Poll for changes
-        const result = await checkCloudChanges()
-        const pollDuration = (performance.now() - pollStart).toFixed(0)
-
-        if (result.indexed_count > 0) {
-          console.log(`[GDrive] ✓ Poll complete in ${pollDuration}ms - Indexed ${result.indexed_count} new items`)
-          toast({
-            title: "New Cloud Media Found",
-            description: `Added ${result.indexed_count} new items (${result.movies_count} movies, ${result.tv_count} TV shows)`
-          })
-        } else {
-          console.log(`[GDrive] Poll complete in ${pollDuration}ms - No changes`)
-        }
-      } catch (error) {
-        console.error('[GDrive] Poll error:', error)
-      } finally {
-        isPolling = false
-      }
-    }
-
-    // Start polling after a short delay to let app initialize
-    const startPolling = () => {
-      console.log('[GDrive] Starting cloud change detection (5-second interval)')
-
-      // Initial poll
-      pollForChanges()
-
-      // Set up interval
-      intervalId = setInterval(pollForChanges, 5000)
-    }
-
-    // Delay start to let app fully initialize
-    const startupDelay = setTimeout(startPolling, 3000)
-
-    return () => {
-      clearTimeout(startupDelay)
-      if (intervalId) {
-        clearInterval(intervalId)
-        console.log('[GDrive] Stopped cloud change detection')
-      }
-    }
-  }, [toast])
+  // Cloud change detection is now handled by the Rust backend
+  // The backend polls every 60 seconds and emits 'library-updated' events
+  // which are already handled elsewhere in the app
 
   // Load library stats - based on which tabs are visible
   // If local is visible, show local stats. If only cloud, show cloud stats. If both, show combined.
@@ -581,87 +509,32 @@ function App() {
 
     try {
       setIsScanning(true)
-      setScanProgress(null)
 
-      // Start local library scan
-      await scanLibrary()
-
-      // Also trigger cloud folder scan if connected
+      // Cloud-only: Check for new files using Changes API
       try {
-        const { isGDriveConnected: checkConnected, scanCloudFolder, getCloudFolders } = await import('@/services/gdrive')
+        const { isGDriveConnected: checkConnected, checkCloudChanges, getCloudFolders } = await import('@/services/gdrive')
         const connected = await checkConnected()
         if (connected) {
           const folders = await getCloudFolders()
           if (folders.length > 0) {
             setIsCloudIndexing(true)
-            setCloudIndexingStatus('Preparing to scan...')
-            setCloudIndexingProgress({
-              currentFolder: 0,
-              totalFolders: folders.length,
-              currentFolderName: '',
-              filesFound: 0,
-              moviesFound: 0,
-              tvFound: 0
-            })
+            setCloudIndexingStatus('Checking for new cloud files...')
 
-            let totalFiles = 0
-            let totalMovies = 0
-            let totalTv = 0
+            // Use Changes API for efficient incremental update
+            const result = await checkCloudChanges()
 
-            // Scan each folder one by one
-            for (let i = 0; i < folders.length; i++) {
-              const folder = folders[i]
-              setCloudIndexingStatus(`Scanning folder ${i + 1} of ${folders.length}`)
-              setCloudIndexingProgress({
-                currentFolder: i + 1,
-                totalFolders: folders.length,
-                currentFolderName: folder.name,
-                filesFound: totalFiles,
-                moviesFound: totalMovies,
-                tvFound: totalTv
-              })
-
-              try {
-                const result = await scanCloudFolder(folder.id, folder.name)
-                totalFiles += result.indexed_count
-                totalMovies += result.movies_count
-                totalTv += result.tv_count
-
-                setCloudIndexingProgress({
-                  currentFolder: i + 1,
-                  totalFolders: folders.length,
-                  currentFolderName: folder.name,
-                  filesFound: totalFiles,
-                  moviesFound: totalMovies,
-                  tvFound: totalTv
-                })
-              } catch (folderError) {
-                console.log(`[Scan] Failed to scan folder ${folder.name}:`, folderError)
-              }
-            }
-
-            setCloudIndexingStatus('Indexing complete!')
-            setCloudIndexingProgress({
-              currentFolder: folders.length,
-              totalFolders: folders.length,
-              currentFolderName: 'Done',
-              filesFound: totalFiles,
-              moviesFound: totalMovies,
-              tvFound: totalTv
-            })
-
-            if (totalFiles > 0) {
+            if (result.indexed_count > 0) {
               toast({
                 title: "Cloud Media Found",
-                description: `Indexed ${totalFiles} cloud files (${totalMovies} movies, ${totalTv} TV shows)`
+                description: `Indexed ${result.indexed_count} new cloud files (${result.movies_count} movies, ${result.tv_count} TV shows)`
               })
               // Refresh the view and stats
               await fetchData()
               await loadLibraryStats()
             } else {
               toast({
-                title: "Cloud Scan Complete",
-                description: "No new media files found in your cloud folders"
+                title: "Cloud Library Up to Date",
+                description: "No new files found in your cloud folders"
               })
             }
 
@@ -671,23 +544,100 @@ function App() {
               setCloudIndexingStatus('')
               setCloudIndexingProgress(null)
             }, 2500)
+          } else {
+            toast({
+              title: "No Cloud Folders",
+              description: "Add cloud folders in Settings to start indexing"
+            })
           }
+        } else {
+          toast({
+            title: "Not Connected",
+            description: "Connect to Google Drive in Settings to index cloud files"
+          })
         }
       } catch (cloudError) {
-        console.log('[Scan] Cloud scan skipped or failed:', cloudError)
+        console.log('[Scan] Cloud scan failed:', cloudError)
         setIsCloudIndexing(false)
         setCloudIndexingStatus('')
         setCloudIndexingProgress(null)
+        toast({ title: "Error", description: "Failed to check cloud files", variant: "destructive" })
       }
 
       setIsScanning(false)
-      toast({ title: "Scan Complete", description: "Library has been updated." })
     } catch (error) {
       setIsScanning(false)
       setIsCloudIndexing(false)
       setCloudIndexingStatus('')
       setCloudIndexingProgress(null)
       toast({ title: "Error", description: "Failed to start scan", variant: "destructive" })
+    }
+  }
+
+  // Handle cloud-only indexing - scans the entire Google Drive
+  const handleCloudScan = async () => {
+    if (isScanning || isCloudIndexing) {
+      toast({ title: "Scan In Progress", description: "A scan is already running." })
+      return
+    }
+
+    try {
+      const { isGDriveConnected: checkConnected, scanCloudFolder } = await import('@/services/gdrive')
+      const connected = await checkConnected()
+
+      if (!connected) {
+        toast({
+          title: "Not Connected",
+          description: "Connect to Google Drive in Settings first"
+        })
+        return
+      }
+
+      setIsCloudIndexing(true)
+      setCloudIndexingStatus('Scanning your entire Google Drive...')
+
+      toast({
+        title: "Indexing Started",
+        description: "Scanning your entire Google Drive for movies and TV shows..."
+      })
+
+      // Scan the root folder which will recursively scan all subfolders
+      const result = await scanCloudFolder('root', 'My Drive')
+
+      if (result.indexed_count > 0) {
+        setCloudIndexingStatus(`✓ Indexed ${result.indexed_count} files!`)
+        toast({
+          title: "Indexing Complete",
+          description: `Found ${result.movies_count} movies and ${result.tv_count} TV shows`
+        })
+        // Refresh the view and stats
+        await fetchData()
+        await loadLibraryStats()
+      } else {
+        setCloudIndexingStatus('✓ No new media found')
+        toast({
+          title: "Indexing Complete",
+          description: "No new movies or TV shows found in your Drive"
+        })
+      }
+
+      // Keep the success state visible briefly
+      setTimeout(() => {
+        setIsCloudIndexing(false)
+        setCloudIndexingStatus('')
+        setCloudIndexingProgress(null)
+      }, 2500)
+
+    } catch (error) {
+      console.error('[CloudScan] Failed:', error)
+      setIsCloudIndexing(false)
+      setCloudIndexingStatus('')
+      setCloudIndexingProgress(null)
+      toast({
+        title: "Indexing Failed",
+        description: String(error) || "Failed to scan Google Drive",
+        variant: "destructive"
+      })
     }
   }
 
@@ -901,9 +851,11 @@ function App() {
         }}
         onOpenSettings={() => setSettingsOpen(true)}
         onScan={handleScan}
+        onCloudScan={handleCloudScan}
         theme={theme}
         toggleTheme={toggleTheme}
         isScanning={isScanning}
+        isCloudIndexing={isCloudIndexing}
         scanProgress={scanProgress}
         showLocalTab={tabVisibility.showLocal}
         showCloudTab={tabVisibility.showCloud}
@@ -918,13 +870,13 @@ function App() {
               initial={{ opacity: 0, y: -20, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.9 }}
-              className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-2.5 rounded-full bg-card/90 backdrop-blur-xl border border-primary/30 shadow-glow"
+              className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-2.5 rounded-full bg-card/90 backdrop-blur-xl border border-white/30 shadow-lg"
             >
               <div className="relative">
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                <div className="absolute inset-0 rounded-full bg-primary/40 blur-md animate-pulse" />
+                <Loader2 className="h-4 w-4 animate-spin text-white" />
+                <div className="absolute inset-0 rounded-full bg-white/40 blur-md animate-pulse" />
               </div>
-              <span className="text-primary text-sm font-semibold">
+              <span className="text-white text-sm font-semibold">
                 Scanning {scanProgress.current}/{scanProgress.total}
               </span>
             </motion.div>
@@ -938,19 +890,19 @@ function App() {
               initial={{ opacity: 0, y: -20, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.9 }}
-              className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-card/95 backdrop-blur-xl border border-cyan-500/30 shadow-glow"
+              className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-card/95 backdrop-blur-xl border border-gray-500/30 shadow-glow"
             >
               <div className="relative">
                 <motion.div
                   animate={{ rotate: 360 }}
                   transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
                 >
-                  <Cloud className="h-4 w-4 text-cyan-400" />
+                  <Cloud className="h-4 w-4 text-gray-400" />
                 </motion.div>
-                <div className="absolute inset-0 rounded-full bg-cyan-400/40 blur-md animate-pulse" />
+                <div className="absolute inset-0 rounded-full bg-gray-400/40 blur-md animate-pulse" />
               </div>
               <div className="flex flex-col">
-                <span className="text-cyan-400 text-sm font-semibold">
+                <span className="text-gray-400 text-sm font-semibold">
                   {cloudIndexingProgress
                     ? `Scanning folder ${cloudIndexingProgress.currentFolder}/${cloudIndexingProgress.totalFolders}`
                     : 'Indexing cloud files...'
@@ -965,7 +917,7 @@ function App() {
               {cloudIndexingProgress && (
                 <div className="w-16 h-1.5 bg-muted/30 rounded-full overflow-hidden">
                   <motion.div
-                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full"
+                    className="h-full bg-gradient-to-r from-gray-500 to-gray-400 rounded-full"
                     animate={{ width: `${(cloudIndexingProgress.currentFolder / cloudIndexingProgress.totalFolders) * 100}%` }}
                     transition={{ duration: 0.3 }}
                   />
@@ -992,7 +944,7 @@ function App() {
                   whileTap={{ scale: 0.95 }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
                     (view === 'local' ? localSubTab : cloudSubTab) === 'movies'
-                      ? 'bg-primary text-white shadow-glow-sm'
+                      ? 'bg-white text-black shadow-lg'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -1004,7 +956,7 @@ function App() {
                   whileTap={{ scale: 0.95 }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
                     (view === 'local' ? localSubTab : cloudSubTab) === 'tv'
-                      ? 'bg-accent text-white shadow-glow-sm'
+                      ? 'bg-white text-black shadow-lg'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -1016,7 +968,7 @@ function App() {
               {/* Search Input */}
               <div className="group relative">
                 <motion.div
-                  className="absolute -inset-0.5 bg-gradient-to-r from-primary/20 to-accent/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                  className="absolute -inset-0.5 bg-gradient-to-r from-white/20 to-white/10 rounded-2xl blur opacity-0 group-hover:opacity-100 transition-opacity duration-300"
                 />
                 <div className="relative flex items-center bg-card/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-lg overflow-hidden">
                   <Search className="w-4 h-4 text-muted-foreground ml-3" />
@@ -1047,7 +999,7 @@ function App() {
                   onClick={() => setViewMode('grid')}
                   whileTap={{ scale: 0.95 }}
                   className={`p-2 rounded-lg transition-all duration-200 ${viewMode === 'grid'
-                    ? 'bg-primary/20 text-primary'
+                    ? 'bg-white/20 text-white'
                     : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
@@ -1057,7 +1009,7 @@ function App() {
                   onClick={() => setViewMode('list')}
                   whileTap={{ scale: 0.95 }}
                   className={`p-2 rounded-lg transition-all duration-200 ${viewMode === 'list'
-                    ? 'bg-primary/20 text-primary'
+                    ? 'bg-white/20 text-white'
                     : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
@@ -1084,7 +1036,7 @@ function App() {
                   onClick={() => setHistoryTab('local')}
                   whileTap={{ scale: 0.95 }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${historyTab === 'local'
-                    ? 'bg-primary text-white shadow-glow-sm'
+                    ? 'bg-white text-black shadow-lg'
                     : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
@@ -1096,7 +1048,7 @@ function App() {
                   onClick={() => setHistoryTab('streaming')}
                   whileTap={{ scale: 0.95 }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${historyTab === 'streaming'
-                    ? 'bg-accent text-white shadow-glow-sm'
+                    ? 'bg-white text-black shadow-lg'
                     : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
@@ -1186,7 +1138,7 @@ function App() {
                             Discover your next
                           </span>
                           <br />
-                          <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary via-violet-400 to-accent animate-gradient-x">
+                          <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-300 to-gray-400 animate-gradient-x">
                             favorite story
                           </span>
                         </h2>
@@ -1208,9 +1160,9 @@ function App() {
                         transition={{ delay: 0.3 }}
                       >
                         {/* Glow effect */}
-                        <div className="absolute -inset-1 bg-gradient-to-r from-primary to-accent rounded-2xl blur-md opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
+                        <div className="absolute -inset-1 bg-gradient-to-r from-white/50 to-gray-400/50 rounded-2xl blur-md opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
 
-                        <div className="relative flex items-center bg-card/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-1.5 transition-all group-focus-within:border-primary/50 group-focus-within:bg-card">
+                        <div className="relative flex items-center bg-card/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-1.5 transition-all group-focus-within:border-white/50 group-focus-within:bg-card">
                           <Search className="w-5 h-5 text-muted-foreground ml-3" />
                           <input
                             type="text"
@@ -1230,7 +1182,7 @@ function App() {
                           )}
                           {isHomeSearching && (
                             <div className="mr-3">
-                              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                              <Loader2 className="w-4 h-4 animate-spin text-white" />
                             </div>
                           )}
                         </div>
@@ -1248,7 +1200,7 @@ function App() {
                             onClick={() => setView('local')}
                             className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-semibold transition-all hover:scale-105"
                           >
-                            <HardDrive className="w-3.5 h-3.5 text-violet-400" />
+                            <HardDrive className="w-3.5 h-3.5 text-gray-400" />
                             <span>Local</span>
                           </button>
                         )}
@@ -1257,7 +1209,7 @@ function App() {
                             onClick={() => setView('cloud')}
                             className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-semibold transition-all hover:scale-105"
                           >
-                            <Cloud className="w-3.5 h-3.5 text-blue-400" />
+                            <Cloud className="w-3.5 h-3.5 text-gray-400" />
                             <span>Google Drive</span>
                           </button>
                         )}
@@ -1265,7 +1217,7 @@ function App() {
                           onClick={() => setView('stream')}
                           className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-semibold transition-all hover:scale-105"
                         >
-                          <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                          <Globe className="w-3.5 h-3.5 text-gray-400" />
                           <span>Browse Online</span>
                         </button>
                       </motion.div>
@@ -1280,7 +1232,7 @@ function App() {
                     >
                       <div className="section-header">
                         <h3 className="section-title">
-                          <Search className="w-5 h-5 text-primary" />
+                          <Search className="w-5 h-5 text-white" />
                           Results ({homeSearchResults.length})
                         </h3>
                       </div>
@@ -1308,8 +1260,8 @@ function App() {
                     >
                       <div className="section-header">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-xl bg-primary/10">
-                            <PlayCircle className="w-5 h-5 text-primary" />
+                          <div className="p-2 rounded-xl bg-white/10">
+                            <PlayCircle className="w-5 h-5 text-white" />
                           </div>
                           <div>
                             <h3 className="text-lg font-semibold text-foreground">Continue Watching</h3>
@@ -1346,8 +1298,8 @@ function App() {
                     >
                       <div className="section-header">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-xl bg-accent/10">
-                            <BarChart3 className="w-5 h-5 text-accent" />
+                          <div className="p-2 rounded-xl bg-white/10">
+                            <BarChart3 className="w-5 h-5 text-white" />
                           </div>
                           <div>
                             <h3 className="text-lg font-semibold text-foreground">Your Library</h3>
@@ -1367,16 +1319,16 @@ function App() {
                             }
                           }}
                           className="stat-card-enhanced group"
-                          style={{ '--stat-color': 'hsl(265 84% 62%)' } as React.CSSProperties}
+                          style={{ '--stat-color': 'hsl(0 0% 70%)' } as React.CSSProperties}
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                         >
                           <div className="flex items-start justify-between mb-4">
                             <div
                               className="stat-icon-wrapper"
-                              style={{ '--icon-color': 'hsl(265 84% 62%)' } as React.CSSProperties}
+                              style={{ '--icon-color': 'hsl(0 0% 70%)' } as React.CSSProperties}
                             >
-                              <Film className="w-6 h-6 text-primary" />
+                              <Film className="w-6 h-6 text-white" />
                             </div>
                             <ChevronRight className="w-5 h-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
@@ -1395,16 +1347,16 @@ function App() {
                             }
                           }}
                           className="stat-card-enhanced group"
-                          style={{ '--stat-color': 'hsl(200 100% 55%)' } as React.CSSProperties}
+                          style={{ '--stat-color': 'hsl(0 0% 60%)' } as React.CSSProperties}
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                         >
                           <div className="flex items-start justify-between mb-4">
                             <div
                               className="stat-icon-wrapper"
-                              style={{ '--icon-color': 'hsl(200 100% 55%)' } as React.CSSProperties}
+                              style={{ '--icon-color': 'hsl(0 0% 60%)' } as React.CSSProperties}
                             >
-                              <Tv className="w-6 h-6 text-accent" />
+                              <Tv className="w-6 h-6 text-white" />
                             </div>
                             <ChevronRight className="w-5 h-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
@@ -1416,16 +1368,16 @@ function App() {
                         <motion.div
                           onClick={() => setView('history')}
                           className="stat-card-enhanced group"
-                          style={{ '--stat-color': 'hsl(142 76% 36%)' } as React.CSSProperties}
+                          style={{ '--stat-color': 'hsl(0 0% 50%)' } as React.CSSProperties}
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                         >
                           <div className="flex items-start justify-between mb-4">
                             <div
                               className="stat-icon-wrapper"
-                              style={{ '--icon-color': 'hsl(142 76% 36%)' } as React.CSSProperties}
+                              style={{ '--icon-color': 'hsl(0 0% 50%)' } as React.CSSProperties}
                             >
-                              <Clock className="w-6 h-6 text-emerald-500" />
+                              <Clock className="w-6 h-6 text-gray-400" />
                             </div>
                             <ChevronRight className="w-5 h-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
@@ -1479,7 +1431,7 @@ function App() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                   >
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent text-sm font-medium mb-3">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-white text-sm font-medium mb-3">
                       <TrendingUp className="w-4 h-4" />
                       <span>Your Activity</span>
                     </div>
@@ -1492,7 +1444,7 @@ function App() {
                     {/* Movies */}
                     <motion.div
                       className="stat-card-enhanced"
-                      style={{ '--stat-color': 'hsl(265 84% 62%)' } as React.CSSProperties}
+                      style={{ '--stat-color': 'hsl(0 0% 70%)' } as React.CSSProperties}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.1 }}
@@ -1501,9 +1453,9 @@ function App() {
                       <div className="flex items-start justify-between mb-3">
                         <div
                           className="stat-icon-wrapper"
-                          style={{ '--icon-color': 'hsl(265 84% 62%)' } as React.CSSProperties}
+                          style={{ '--icon-color': 'hsl(0 0% 70%)' } as React.CSSProperties}
                         >
-                          <Film className="w-6 h-6 text-primary" />
+                          <Film className="w-6 h-6 text-white" />
                         </div>
                       </div>
                       <div className="text-4xl font-bold text-foreground mb-1">{libraryStats.movies}</div>
@@ -1513,7 +1465,7 @@ function App() {
                     {/* TV Shows */}
                     <motion.div
                       className="stat-card-enhanced"
-                      style={{ '--stat-color': 'hsl(200 100% 55%)' } as React.CSSProperties}
+                      style={{ '--stat-color': 'hsl(0 0% 60%)' } as React.CSSProperties}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.15 }}
@@ -1522,9 +1474,9 @@ function App() {
                       <div className="flex items-start justify-between mb-3">
                         <div
                           className="stat-icon-wrapper"
-                          style={{ '--icon-color': 'hsl(200 100% 55%)' } as React.CSSProperties}
+                          style={{ '--icon-color': 'hsl(0 0% 60%)' } as React.CSSProperties}
                         >
-                          <Tv className="w-6 h-6 text-accent" />
+                          <Tv className="w-6 h-6 text-white" />
                         </div>
                       </div>
                       <div className="text-4xl font-bold text-foreground mb-1">{libraryStats.shows}</div>
@@ -1534,7 +1486,7 @@ function App() {
                     {/* In Progress */}
                     <motion.div
                       className="stat-card-enhanced"
-                      style={{ '--stat-color': 'hsl(142 76% 36%)' } as React.CSSProperties}
+                      style={{ '--stat-color': 'hsl(0 0% 50%)' } as React.CSSProperties}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.2 }}
@@ -1543,9 +1495,9 @@ function App() {
                       <div className="flex items-start justify-between mb-3">
                         <div
                           className="stat-icon-wrapper"
-                          style={{ '--icon-color': 'hsl(142 76% 36%)' } as React.CSSProperties}
+                          style={{ '--icon-color': 'hsl(0 0% 50%)' } as React.CSSProperties}
                         >
-                          <Clock className="w-6 h-6 text-emerald-500" />
+                          <Clock className="w-6 h-6 text-gray-400" />
                         </div>
                       </div>
                       <div className="text-4xl font-bold text-foreground mb-1">{continueWatching.length}</div>
@@ -1555,7 +1507,7 @@ function App() {
                     {/* Items Watched */}
                     <motion.div
                       className="stat-card-enhanced"
-                      style={{ '--stat-color': 'hsl(38 92% 50%)' } as React.CSSProperties}
+                      style={{ '--stat-color': 'hsl(0 0% 55%)' } as React.CSSProperties}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.25 }}
@@ -1564,9 +1516,9 @@ function App() {
                       <div className="flex items-start justify-between mb-3">
                         <div
                           className="stat-icon-wrapper"
-                          style={{ '--icon-color': 'hsl(38 92% 50%)' } as React.CSSProperties}
+                          style={{ '--icon-color': 'hsl(0 0% 55%)' } as React.CSSProperties}
                         >
-                          <TrendingUp className="w-6 h-6 text-amber-500" />
+                          <TrendingUp className="w-6 h-6 text-gray-400" />
                         </div>
                       </div>
                       <div className="text-4xl font-bold text-foreground mb-1">{items.length}</div>
@@ -1583,8 +1535,8 @@ function App() {
                     >
                       <div className="section-header">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-xl bg-primary/10">
-                            <Calendar className="w-5 h-5 text-primary" />
+                          <div className="p-2 rounded-xl bg-white/10">
+                            <Calendar className="w-5 h-5 text-white" />
                           </div>
                           <div>
                             <h3 className="text-lg font-semibold text-foreground">Recent Activity</h3>
@@ -1612,13 +1564,13 @@ function App() {
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                              <h4 className="font-semibold text-foreground truncate group-hover:text-white transition-colors">
                                 {item.title}
                               </h4>
                               <div className="flex items-center gap-3 mt-1">
                                 <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden max-w-32">
                                   <div
-                                    className="h-full bg-gradient-to-r from-primary to-primary/80 rounded-full"
+                                    className="h-full bg-white rounded-full"
                                     style={{ width: `${item.progress_percent || 0}%` }}
                                   />
                                 </div>
@@ -1628,7 +1580,7 @@ function App() {
                               </div>
                             </div>
                             <div className="p-2 rounded-full bg-muted/50 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Play className="w-5 h-5 text-primary" />
+                              <Play className="w-5 h-5 text-white" />
                             </div>
                           </motion.div>
                         ))}
@@ -1720,7 +1672,7 @@ function App() {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: index * 0.03 }}
                           onClick={() => handleStreamingItemClick(item)}
-                          className="group relative overflow-hidden rounded-xl bg-card border border-border/50 cursor-pointer transition-all duration-300 hover:border-primary/40 hover:shadow-glow-sm"
+                          className="group relative overflow-hidden rounded-xl bg-card border border-border/50 cursor-pointer transition-all duration-300 hover:border-white/40 hover:shadow-lg"
                           style={{
                             transform: 'translateY(0)',
                           }}
@@ -1747,9 +1699,9 @@ function App() {
                               className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                             >
                               <div className="relative">
-                                <div className="absolute inset-0 rounded-full bg-primary/30 blur-xl scale-150" />
-                                <div className="relative w-14 h-14 rounded-full bg-primary flex items-center justify-center shadow-lg">
-                                  <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+                                <div className="absolute inset-0 rounded-full bg-white/30 blur-xl scale-150" />
+                                <div className="relative w-14 h-14 rounded-full bg-white flex items-center justify-center shadow-lg">
+                                  <Play className="w-6 h-6 text-black fill-black ml-0.5" />
                                 </div>
                               </div>
                             </motion.div>
@@ -1758,7 +1710,7 @@ function App() {
                             {item.progress_percent > 0 && item.progress_percent < 95 && (
                               <div className="absolute bottom-0 left-0 right-0 h-1 bg-background/50">
                                 <motion.div
-                                  className="h-full bg-primary"
+                                  className="h-full bg-white"
                                   initial={{ width: 0 }}
                                   animate={{ width: `${item.progress_percent}%` }}
                                   transition={{ duration: 0.8, delay: 0.2 }}
@@ -1772,7 +1724,7 @@ function App() {
                             </div>
                           </div>
                           <div className="p-3">
-                            <h4 className="font-medium text-sm truncate group-hover:text-primary transition-colors">{item.title}</h4>
+                            <h4 className="font-medium text-sm truncate group-hover:text-white transition-colors">{item.title}</h4>
                             {item.media_type === 'tv' && item.season && item.episode && (
                               <p className="text-xs text-muted-foreground mt-0.5">
                                 Season {item.season} · Episode {item.episode}
@@ -1848,24 +1800,24 @@ function App() {
                               <div className="relative mb-6">
                                 {/* Animated rings */}
                                 <motion.div
-                                  className="absolute inset-0 rounded-full border-2 border-cyan-500/30"
+                                  className="absolute inset-0 rounded-full border-2 border-gray-500/30"
                                   animate={{ scale: [1, 1.5, 1.5], opacity: [0.5, 0, 0] }}
                                   transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
                                   style={{ width: 80, height: 80 }}
                                 />
                                 <motion.div
-                                  className="absolute inset-0 rounded-full border-2 border-cyan-500/30"
+                                  className="absolute inset-0 rounded-full border-2 border-gray-500/30"
                                   animate={{ scale: [1, 1.5, 1.5], opacity: [0.5, 0, 0] }}
                                   transition={{ duration: 2, repeat: Infinity, ease: "easeOut", delay: 0.5 }}
                                   style={{ width: 80, height: 80 }}
                                 />
                                 {/* Center icon */}
-                                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 flex items-center justify-center">
+                                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-gray-500/20 to-gray-400/20 border border-gray-500/30 flex items-center justify-center">
                                   <motion.div
                                     animate={cloudIndexingStatus.includes('complete') ? {} : { rotate: 360 }}
                                     transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
                                   >
-                                    <Cloud className={`w-8 h-8 ${cloudIndexingStatus.includes('complete') ? 'text-green-400' : 'text-cyan-400'}`} />
+                                    <Cloud className={`w-8 h-8 ${cloudIndexingStatus.includes('complete') ? 'text-white' : 'text-gray-400'}`} />
                                   </motion.div>
                                 </div>
                               </div>
@@ -1877,7 +1829,7 @@ function App() {
 
                               {/* Current Folder */}
                               {cloudIndexingProgress && cloudIndexingProgress.currentFolderName && !cloudIndexingStatus.includes('complete') && (
-                                <p className="text-cyan-400 text-sm font-medium mb-3">
+                                <p className="text-gray-400 text-sm font-medium mb-3">
                                   📁 {cloudIndexingProgress.currentFolderName}
                                 </p>
                               )}
@@ -1890,11 +1842,11 @@ function App() {
                                     <span className="text-xs text-muted-foreground">Files Found</span>
                                   </div>
                                   <div className="flex flex-col items-center px-4 py-2 rounded-lg bg-card/50 border border-border/50">
-                                    <span className="text-2xl font-bold text-primary">{cloudIndexingProgress.moviesFound}</span>
+                                    <span className="text-2xl font-bold text-white">{cloudIndexingProgress.moviesFound}</span>
                                     <span className="text-xs text-muted-foreground">Movies</span>
                                   </div>
                                   <div className="flex flex-col items-center px-4 py-2 rounded-lg bg-card/50 border border-border/50">
-                                    <span className="text-2xl font-bold text-accent">{cloudIndexingProgress.tvFound}</span>
+                                    <span className="text-2xl font-bold text-white">{cloudIndexingProgress.tvFound}</span>
                                     <span className="text-xs text-muted-foreground">TV Shows</span>
                                   </div>
                                 </div>
@@ -1909,7 +1861,7 @@ function App() {
                                   </div>
                                   <div className="w-full h-2 bg-muted/30 rounded-full overflow-hidden">
                                     <motion.div
-                                      className={`h-full rounded-full ${cloudIndexingStatus.includes('complete') ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-cyan-500 to-blue-500'}`}
+                                      className={`h-full rounded-full ${cloudIndexingStatus.includes('complete') ? 'bg-gradient-to-r from-gray-500 to-gray-400' : 'bg-gradient-to-r from-gray-500 to-gray-400'}`}
                                       initial={{ width: "0%" }}
                                       animate={{ width: `${(cloudIndexingProgress.currentFolder / cloudIndexingProgress.totalFolders) * 100}%` }}
                                       transition={{ duration: 0.3 }}
@@ -1948,7 +1900,7 @@ function App() {
                               <div className="flex items-center gap-3">
                                 <button
                                   onClick={() => {
-                                    setSettingsInitialTab(view === 'cloud' ? 'cloud' : 'library')
+                                    setSettingsInitialTab('cloud')
                                     setSettingsOpen(true)
                                   }}
                                   className="btn-primary inline-flex items-center gap-2"

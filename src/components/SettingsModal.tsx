@@ -4,12 +4,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import {
-  Plus, Trash2, MonitorPlay, FolderOpen,
-  AlertTriangle, Settings, Film, Key, Zap, Power, X, Save, RefreshCw, Sparkles, Eye, Cloud, Wrench, HardDrive
+  Trash2, MonitorPlay, FolderOpen,
+  AlertTriangle, Settings, Key, Zap, Power, X, Save, Sparkles, Eye, Cloud, Wrench, HardDrive, Download, RefreshCw
 } from "lucide-react"
 import {
-  Config, getConfig, saveConfig, scanLibrary, clearAllAppData, cleanupMissingMetadata, repairFilePaths,
-  getCloudCacheInfo, clearCloudCache, CloudCacheInfo, TabVisibility
+  Config, getConfig, saveConfig, clearAllAppData, cleanupMissingMetadata, repairFilePaths,
+  getCloudCacheInfo, clearCloudCache, CloudCacheInfo, TabVisibility,
+  checkForUpdates, downloadUpdate, installUpdate, getAppVersion, UpdateInfo
 } from "@/services/api"
 import { useToast } from "@/components/ui/use-toast"
 import { open as openDialog } from '@tauri-apps/api/dialog'
@@ -28,7 +29,7 @@ interface SettingsModalProps {
   onTabVisibilityChange?: (visibility: TabVisibility) => void
 }
 
-type SettingsSection = 'general' | 'library' | 'cloud' | 'player' | 'api' | 'danger'
+type SettingsSection = 'general' | 'cloud' | 'player' | 'api' | 'danger'
 
 export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initialTab, tabVisibility, onTabVisibilityChange }: SettingsModalProps) {
   const [config, setConfig] = useState<Config>({
@@ -36,9 +37,7 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
     vlc_path: "",
     ffprobe_path: "",
     ffmpeg_path: "",
-    media_folders: [],
     tmdb_api_key: "",
-    file_watcher_enabled: true,
     cloud_cache_enabled: false,
     cloud_cache_dir: "",
     cloud_cache_max_mb: 1024,
@@ -53,6 +52,11 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
   const [activeSection, setActiveSection] = useState<SettingsSection>('general')
   const [cacheInfo, setCacheInfo] = useState<CloudCacheInfo | null>(null)
   const [clearingCache, setClearingCache] = useState(false)
+  const [appVersion, setAppVersion] = useState<string>("")
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [downloadingUpdate, setDownloadingUpdate] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState(0)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -60,6 +64,7 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
       loadConfig()
       checkAutoStart()
       loadCacheInfo()
+      loadAppVersion()
       setActiveSection(initialTab || 'general')
       setShowResetConfirm(false)
     }
@@ -71,6 +76,62 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
       setCacheInfo(info)
     } catch (error) {
       console.error("Failed to load cache info", error)
+    }
+  }
+
+  const loadAppVersion = async () => {
+    try {
+      const version = await getAppVersion()
+      setAppVersion(version)
+    } catch (error) {
+      console.error("Failed to load app version", error)
+    }
+  }
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true)
+    setUpdateInfo(null)
+    try {
+      const info = await checkForUpdates()
+      setUpdateInfo(info)
+      if (!info.available) {
+        toast({ title: "Up to Date", description: `You're running the latest version (${info.current_version})` })
+      }
+    } catch (error) {
+      console.error("Failed to check for updates", error)
+      toast({ title: "Error", description: "Failed to check for updates. Please try again later.", variant: "destructive" })
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }
+
+  const handleDownloadAndInstall = async () => {
+    if (!updateInfo?.download_url) return
+
+    setDownloadingUpdate(true)
+    setDownloadProgress(0)
+    try {
+      // Listen for download progress events
+      const { listen } = await import('@tauri-apps/api/event')
+      const unlisten = await listen<{ progress: number }>('update-download-progress', (event) => {
+        setDownloadProgress(event.payload.progress)
+      })
+
+      const installerPath = await downloadUpdate(updateInfo.download_url)
+      unlisten()
+
+      toast({ title: "Download Complete", description: "Installing update and restarting..." })
+
+      // Small delay to show the toast
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      await installUpdate(installerPath)
+    } catch (error) {
+      console.error("Failed to download/install update", error)
+      toast({ title: "Error", description: "Failed to download update. Please try again.", variant: "destructive" })
+    } finally {
+      setDownloadingUpdate(false)
+      setDownloadProgress(0)
     }
   }
 
@@ -107,9 +168,7 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
         vlc_path: data.vlc_path || "",
         ffprobe_path: data.ffprobe_path || "",
         ffmpeg_path: data.ffmpeg_path || "",
-        media_folders: data.media_folders || [],
         tmdb_api_key: data.tmdb_api_key || "",
-        file_watcher_enabled: data.file_watcher_enabled ?? true,
         cloud_cache_enabled: data.cloud_cache_enabled ?? false,
         cloud_cache_dir: data.cloud_cache_dir || "",
         cloud_cache_max_mb: data.cloud_cache_max_mb ?? 1024,
@@ -132,15 +191,6 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
       toast({ title: "Error", description: "Failed to save settings", variant: "destructive" })
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleScan = async () => {
-    try {
-      await scanLibrary()
-      toast({ title: "Scan Started", description: "Library scan has been initiated in the background." })
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to start scan", variant: "destructive" })
     }
   }
 
@@ -210,37 +260,6 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
     }
   }
 
-  const addFolder = () => {
-    setConfig({ ...config, media_folders: [...config.media_folders, ""] })
-  }
-
-  const removeFolder = (index: number) => {
-    const newFolders = [...config.media_folders]
-    newFolders.splice(index, 1)
-    setConfig({ ...config, media_folders: newFolders })
-  }
-
-  const updateFolder = (index: number, value: string) => {
-    const newFolders = [...config.media_folders]
-    newFolders[index] = value
-    setConfig({ ...config, media_folders: newFolders })
-  }
-
-  const browseFolder = async (index: number) => {
-    try {
-      const selected = await openDialog({
-        directory: true,
-        multiple: false,
-        title: 'Select Media Folder'
-      })
-      if (selected && typeof selected === 'string') {
-        updateFolder(index, selected)
-      }
-    } catch (error) {
-      console.error("Failed to open folder dialog", error)
-    }
-  }
-
   const browseMpvPath = async () => {
     try {
       const selected = await openDialog({
@@ -302,7 +321,6 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
 
   const sections: { id: SettingsSection; label: string; icon: React.ReactNode }[] = [
     { id: 'general', label: 'General', icon: <Settings className="w-4 h-4" /> },
-    { id: 'library', label: 'Library', icon: <Film className="w-4 h-4" /> },
     { id: 'cloud', label: 'Cloud Storage', icon: <Cloud className="w-4 h-4" /> },
     { id: 'player', label: 'Player', icon: <MonitorPlay className="w-4 h-4" /> },
     { id: 'api', label: 'API Keys', icon: <Key className="w-4 h-4" /> },
@@ -333,7 +351,7 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                   className={cn(
                     "w-full flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 sm:py-2.5 rounded-xl transition-all duration-200 text-left",
                     activeSection === section.id
-                      ? "bg-primary/10 text-primary"
+                      ? "bg-white/10 text-white"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                   )}
                 >
@@ -367,8 +385,8 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                     <div className="p-4 rounded-xl bg-card border border-border">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-primary/10">
-                            <Power className="w-5 h-5 text-primary" />
+                          <div className="p-2 rounded-lg bg-white/10">
+                            <Power className="w-5 h-5 text-white" />
                           </div>
                           <div>
                             <Label className="text-base font-medium">Run on Startup</Label>
@@ -381,33 +399,12 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                       </div>
                     </div>
 
-                    {/* File Watcher Toggle */}
-                    <div className="p-4 rounded-xl bg-card border border-border">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-green-500/10">
-                            <Eye className="w-5 h-5 text-green-500" />
-                          </div>
-                          <div>
-                            <Label className="text-base font-medium">Auto-detect New Files</Label>
-                            <p className="text-sm text-muted-foreground">
-                              Automatically scan for new media files in your folders
-                            </p>
-                          </div>
-                        </div>
-                        <Switch
-                          checked={config.file_watcher_enabled ?? true}
-                          onCheckedChange={(checked) => setConfig({ ...config, file_watcher_enabled: checked })}
-                        />
-                      </div>
-                    </div>
-
                     {/* Onboarding Overview */}
                     <div className="p-4 rounded-xl bg-card border border-border">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-accent/10">
-                            <Sparkles className="w-5 h-5 text-accent" />
+                          <div className="p-2 rounded-lg bg-white/10">
+                            <Sparkles className="w-5 h-5 text-white" />
                           </div>
                           <div>
                             <Label className="text-base font-medium">Onboarding Overview</Label>
@@ -434,8 +431,8 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                     {/* Tab Visibility */}
                     <div className="p-4 rounded-xl bg-card border border-border space-y-4">
                       <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 rounded-lg bg-violet-500/10">
-                          <Eye className="w-5 h-5 text-violet-500" />
+                        <div className="p-2 rounded-lg bg-white/10">
+                          <Eye className="w-5 h-5 text-white" />
                         </div>
                         <div>
                           <Label className="text-base font-medium">Navigation Tabs</Label>
@@ -448,7 +445,7 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                       {/* Local Tab Toggle */}
                       <div className="flex items-center justify-between pl-12">
                         <div className="flex items-center gap-2">
-                          <HardDrive className="w-4 h-4 text-pink-500" />
+                          <HardDrive className="w-4 h-4 text-gray-400" />
                           <span className="text-sm font-medium">Local Library</span>
                         </div>
                         <Switch
@@ -464,7 +461,7 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                       {/* Cloud Tab Toggle */}
                       <div className="flex items-center justify-between pl-12">
                         <div className="flex items-center gap-2">
-                          <Cloud className="w-4 h-4 text-cyan-500" />
+                          <Cloud className="w-4 h-4 text-gray-400" />
                           <span className="text-sm font-medium">Google Drive</span>
                         </div>
                         <Switch
@@ -477,72 +474,78 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                         />
                       </div>
                     </div>
-                  </motion.div>
-                )}
 
-                {/* Library Section */}
-                {activeSection === 'library' && (
-                  <motion.div
-                    key="library"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="space-y-6"
-                  >
-                    <div>
-                      <h3 className="text-lg font-semibold text-foreground mb-1">Media Library</h3>
-                      <p className="text-sm text-muted-foreground">Configure folders to scan for media</p>
-                    </div>
-
-                    {/* Media Folders */}
-                    <div className="space-y-3">
-                      <Label className="text-sm font-medium">Media Folders</Label>
-                      {config.media_folders.length === 0 && (
-                        <div className="p-8 rounded-xl border border-dashed border-border text-center">
-                          <FolderOpen className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                          <p className="text-sm text-muted-foreground mb-3">No media folders configured</p>
-                          <Button variant="outline" size="sm" onClick={addFolder}>
-                            <Plus className="w-4 h-4 mr-2" /> Add Folder
-                          </Button>
+                    {/* About & Updates */}
+                    <div className="p-4 rounded-xl bg-card border border-border space-y-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 rounded-lg bg-white/10">
+                          <Download className="w-5 h-5 text-white" />
                         </div>
-                      )}
-
-                      {config.media_folders.map((folder, index) => (
-                        <div key={index} className="flex gap-2">
-                          <Input
-                            value={folder}
-                            onChange={(e) => updateFolder(index, e.target.value)}
-                            placeholder="Path to media folder"
-                            className="flex-1"
-                          />
-                          <Button variant="outline" size="icon" onClick={() => browseFolder(index)}>
-                            <FolderOpen className="h-4 w-4" />
-                          </Button>
-                          <Button variant="destructive" size="icon" onClick={() => removeFolder(index)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-
-                      {config.media_folders.length > 0 && (
-                        <Button variant="outline" size="sm" onClick={addFolder} className="mt-2">
-                          <Plus className="mr-2 h-4 w-4" /> Add Another Folder
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Scan Button */}
-                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/20">
-                      <div className="flex items-center justify-between">
                         <div>
-                          <h4 className="font-medium text-foreground">Scan Library</h4>
-                          <p className="text-sm text-muted-foreground">Scan folders for new media files</p>
+                          <Label className="text-base font-medium">About & Updates</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Version {appVersion || "..."}
+                          </p>
                         </div>
-                        <Button onClick={handleScan} className="gap-2">
-                          <RefreshCw className="w-4 h-4" />
-                          Scan Now
-                        </Button>
                       </div>
+
+                      {/* Check for Updates Button */}
+                      {!updateInfo?.available && (
+                        <Button
+                          variant="outline"
+                          onClick={handleCheckUpdate}
+                          disabled={checkingUpdate}
+                          className="w-full gap-2"
+                        >
+                          <RefreshCw className={cn("w-4 h-4", checkingUpdate && "animate-spin")} />
+                          {checkingUpdate ? "Checking..." : "Check for Updates"}
+                        </Button>
+                      )}
+
+                      {/* Update Available */}
+                      {updateInfo?.available && (
+                        <div className="space-y-3 p-3 rounded-lg bg-white/10 border border-white/20">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-white">
+                              Update Available: v{updateInfo.latest_version}
+                            </span>
+                            {updateInfo.published_at && (
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(updateInfo.published_at).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+
+                          {updateInfo.release_notes && (
+                            <div className="text-xs text-muted-foreground max-h-24 overflow-y-auto">
+                              <p className="whitespace-pre-wrap">{updateInfo.release_notes}</p>
+                            </div>
+                          )}
+
+                          {downloadingUpdate ? (
+                            <div className="space-y-2">
+                              <div className="w-full bg-muted rounded-full h-2">
+                                <div
+                                  className="bg-white h-2 rounded-full transition-all duration-300"
+                                  style={{ width: `${downloadProgress}%` }}
+                                />
+                              </div>
+                              <p className="text-xs text-center text-muted-foreground">
+                                Downloading... {downloadProgress.toFixed(0)}%
+                              </p>
+                            </div>
+                          ) : (
+                            <Button
+                              onClick={handleDownloadAndInstall}
+                              disabled={!updateInfo.download_url}
+                              className="w-full gap-2 bg-white text-black hover:bg-gray-200"
+                            >
+                              <Download className="w-4 h-4" />
+                              Download & Install
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </motion.div>
                 )}
@@ -569,8 +572,8 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                       <div className="p-3 sm:p-4 rounded-xl bg-card border border-border">
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                            <div className="p-1.5 sm:p-2 rounded-lg bg-blue-500/10 flex-shrink-0">
-                              <HardDrive className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
+                            <div className="p-1.5 sm:p-2 rounded-lg bg-white/10 flex-shrink-0">
+                              <HardDrive className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                             </div>
                             <div className="min-w-0">
                               <Label className="text-sm sm:text-base font-medium">Enable Disk Cache</Label>
@@ -731,8 +734,8 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                     {/* TMDB API Key/Token */}
                     <div className="p-4 rounded-xl bg-card border border-border space-y-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-blue-500/10">
-                          <Zap className="w-5 h-5 text-blue-500" />
+                        <div className="p-2 rounded-lg bg-white/10">
+                          <Zap className="w-5 h-5 text-white" />
                         </div>
                         <div>
                           <Label className="text-base font-medium">TMDB API Key / Access Token</Label>
@@ -752,7 +755,7 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                           href="https://www.themoviedb.org/settings/api"
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-primary hover:underline"
+                          className="text-white hover:underline"
                         >
                           themoviedb.org
                         </a>
@@ -776,13 +779,13 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                     </div>
 
                     {/* Repair File Paths */}
-                    <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-500/5 space-y-4">
+                    <div className="p-4 rounded-xl border border-white/20 bg-white/5 space-y-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-blue-500/20">
-                          <Wrench className="w-5 h-5 text-blue-500" />
+                        <div className="p-2 rounded-lg bg-white/10">
+                          <Wrench className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                          <Label className="text-base font-medium text-blue-500">Repair File Paths</Label>
+                          <Label className="text-base font-medium text-white">Repair File Paths</Label>
                           <p className="text-sm text-muted-foreground">
                             Fix broken database entries
                           </p>
@@ -795,7 +798,7 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                       <Button
                         variant="outline"
                         onClick={handleRepairFilePaths}
-                        className="w-full border-blue-500/30 hover:bg-blue-500/10"
+                        className="w-full border-white/20 hover:bg-white/10"
                         disabled={repairing}
                       >
                         <Wrench className="mr-2 h-4 w-4" />
@@ -804,13 +807,13 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                     </div>
 
                     {/* Cleanup Missing Metadata */}
-                    <div className="p-4 rounded-xl border border-orange-500/30 bg-orange-500/5 space-y-4">
+                    <div className="p-4 rounded-xl border border-gray-500/30 bg-gray-500/5 space-y-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-orange-500/20">
-                          <Trash2 className="w-5 h-5 text-orange-500" />
+                        <div className="p-2 rounded-lg bg-gray-500/20">
+                          <Trash2 className="w-5 h-5 text-gray-400" />
                         </div>
                         <div>
-                          <Label className="text-base font-medium text-orange-500">Clean Up Missing Titles</Label>
+                          <Label className="text-base font-medium text-gray-400">Clean Up Missing Titles</Label>
                           <p className="text-sm text-muted-foreground">
                             Remove orphaned metadata and posters
                           </p>
@@ -823,7 +826,7 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                       <Button
                         variant="outline"
                         onClick={handleCleanupMissing}
-                        className="w-full border-orange-500/30 hover:bg-orange-500/10"
+                        className="w-full border-gray-500/30 hover:bg-gray-500/10"
                         disabled={cleaningUp}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />

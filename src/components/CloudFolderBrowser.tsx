@@ -133,7 +133,7 @@ export function CloudFolderBrowser({ open, onOpenChange, onSelectFolder }: Cloud
                                     onClick={() => navigateToBreadcrumb(index)}
                                     className={`px-2 py-1 rounded-md transition-colors ${
                                         index === currentPath.length - 1
-                                            ? 'bg-primary/10 text-primary font-medium'
+                                            ? 'bg-white/10 text-white font-medium'
                                             : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                                     }`}
                                 >
@@ -175,18 +175,18 @@ export function CloudFolderBrowser({ open, onOpenChange, onSelectFolder }: Cloud
                                         onDoubleClick={() => navigateToFolder(folder)}
                                         className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${
                                             selectedFolder?.id === folder.id
-                                                ? 'border-primary bg-primary/10'
-                                                : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                                                ? 'border-white bg-white/10'
+                                                : 'border-border hover:border-white/50 hover:bg-muted/50'
                                         }`}
                                     >
                                         <div className={`p-2 rounded-lg ${
                                             selectedFolder?.id === folder.id
-                                                ? 'bg-primary/20'
+                                                ? 'bg-white/20'
                                                 : 'bg-muted'
                                         }`}>
                                             <Folder className={`w-5 h-5 ${
                                                 selectedFolder?.id === folder.id
-                                                    ? 'text-primary'
+                                                    ? 'text-white'
                                                     : 'text-muted-foreground'
                                             }`} />
                                         </div>
@@ -197,7 +197,7 @@ export function CloudFolderBrowser({ open, onOpenChange, onSelectFolder }: Cloud
                                             </p>
                                         </div>
                                         {selectedFolder?.id === folder.id && (
-                                            <Check className="w-5 h-5 text-primary flex-shrink-0" />
+                                            <Check className="w-5 h-5 text-white flex-shrink-0" />
                                         )}
                                     </motion.button>
                                 ))}

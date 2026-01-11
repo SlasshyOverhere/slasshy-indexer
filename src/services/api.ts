@@ -29,9 +29,7 @@ export interface Config {
     vlc_path?: string;
     ffprobe_path?: string;
     ffmpeg_path?: string;
-    media_folders: string[];
     tmdb_api_key?: string;
-    file_watcher_enabled?: boolean;
     // Cloud cache settings
     cloud_cache_enabled?: boolean;
     cloud_cache_dir?: string;
@@ -312,6 +310,17 @@ export const deleteSeries = async (seriesId: number, deleteFiles: boolean): Prom
     }
 };
 
+// Delete just the cloud folder for a TV series (fallback if automatic deletion fails)
+export const deleteSeriesCloudFolder = async (seriesId: number): Promise<{ message: string }> => {
+    try {
+        const response = await invoke<{ message: string }>('delete_series_cloud_folder', { seriesId });
+        return response;
+    } catch (error) {
+        console.error('Failed to delete cloud folder:', error);
+        throw error;
+    }
+};
+
 
 // Get episodes for a TV show
 export const getEpisodes = async (seriesId: number): Promise<MediaItem[]> => {
@@ -331,7 +340,7 @@ export const getConfig = async (): Promise<Config> => {
         return config;
     } catch (error) {
         console.error('Failed to get config:', error);
-        return { media_folders: [] };
+        return {};
     }
 };
 
@@ -341,16 +350,6 @@ export const saveConfig = async (config: Config): Promise<void> => {
         await invoke('save_config', { newConfig: config });
     } catch (error) {
         console.error('Failed to save config:', error);
-        throw error;
-    }
-};
-
-// Scan library
-export const scanLibrary = async (): Promise<void> => {
-    try {
-        await invoke('scan_library');
-    } catch (error) {
-        console.error('Failed to start scan:', error);
         throw error;
     }
 };
@@ -874,4 +873,84 @@ export const clearCloudCache = async (): Promise<{ message: string }> => {
     }
 };
 
+// ==================== GOOGLE DRIVE ====================
+
+export interface DriveAccountInfo {
+    email: string;
+    display_name: string | null;
+    photo_url: string | null;
+    storage_used: number | null;
+    storage_limit: number | null;
+}
+
+// Check if connected to Google Drive
+export const isGdriveConnected = async (): Promise<boolean> => {
+    try {
+        return await invoke<boolean>('gdrive_is_connected');
+    } catch (error) {
+        console.error('Failed to check GDrive connection:', error);
+        return false;
+    }
+};
+
+// Get Google Drive account info including storage stats
+export const getGdriveAccountInfo = async (): Promise<DriveAccountInfo | null> => {
+    try {
+        return await invoke<DriveAccountInfo>('gdrive_get_account_info');
+    } catch (error) {
+        console.error('Failed to get GDrive account info:', error);
+        return null;
+    }
+};
+
+// ==================== AUTO-UPDATE ====================
+
+export interface UpdateInfo {
+    available: boolean;
+    current_version: string;
+    latest_version: string;
+    release_notes: string;
+    download_url: string | null;
+    published_at: string | null;
+}
+
+// Check for updates from GitHub releases
+export const checkForUpdates = async (): Promise<UpdateInfo> => {
+    try {
+        return await invoke<UpdateInfo>('check_for_updates');
+    } catch (error) {
+        console.error('Failed to check for updates:', error);
+        throw error;
+    }
+};
+
+// Download update to temp directory (returns installer path)
+export const downloadUpdate = async (url: string): Promise<string> => {
+    try {
+        return await invoke<string>('download_update', { url });
+    } catch (error) {
+        console.error('Failed to download update:', error);
+        throw error;
+    }
+};
+
+// Install update and restart app
+export const installUpdate = async (installerPath: string): Promise<void> => {
+    try {
+        await invoke('install_update', { installerPath });
+    } catch (error) {
+        console.error('Failed to install update:', error);
+        throw error;
+    }
+};
+
+// Get current app version
+export const getAppVersion = async (): Promise<string> => {
+    try {
+        return await invoke<string>('get_app_version');
+    } catch (error) {
+        console.error('Failed to get app version:', error);
+        return '0.0.0';
+    }
+};
 

@@ -1,0 +1,16 @@
+version: 2
+
+# Paths to ignore during scanning
+paths-ignore:
+  - "**/*.lock"
+  - "**/Cargo.lock"
+  - "**/package-lock.json"
+  - "**/.env.example"
+  - "**/dist/**"
+  - "**/target/**"
+  - "**/node_modules/**"
+
+# Secret types to ignore (TMDB tokens are read-only public metadata tokens)
+matches-ignore:
+  - name: "TMDB read-only metadata token"
+    match: "eyJ*"

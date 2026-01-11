@@ -216,7 +216,7 @@ export function VideasyPlayer({
                     <p className="text-sm text-gray-400 mt-2">Unable to construct streaming URL</p>
                     <button
                         onClick={onClose}
-                        className="mt-4 px-4 py-2 bg-primary rounded-lg hover:bg-primary/80 transition-colors"
+                        className="mt-4 px-4 py-2 bg-white text-black rounded-lg hover:bg-white/80 transition-colors"
                     >
                         Close
                     </button>
@@ -252,7 +252,7 @@ export function VideasyPlayer({
                     className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between"
                 >
                     <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
                         <h1 className="text-white text-lg font-semibold truncate max-w-md">
                             {title}
                             {mediaType === 'tv' && season !== undefined && episode !== undefined && (
@@ -261,7 +261,7 @@ export function VideasyPlayer({
                                 </span>
                             )}
                         </h1>
-                        <span className="text-xs text-primary/80 bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                        <span className="text-xs text-white/80 bg-white/10 px-2 py-0.5 rounded-full border border-white/20">
                             STREAMING
                         </span>
                     </div>
@@ -296,8 +296,8 @@ export function VideasyPlayer({
                             className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 z-20"
                         >
                             <div className="relative">
-                                <Loader2 className="h-16 w-16 animate-spin text-primary" />
-                                <div className="absolute inset-0 h-16 w-16 rounded-full border-2 border-primary/20 animate-ping" />
+                                <Loader2 className="h-16 w-16 animate-spin text-white" />
+                                <div className="absolute inset-0 h-16 w-16 rounded-full border-2 border-white/20 animate-ping" />
                             </div>
                             <p className="mt-4 text-white/60 text-sm">Loading stream...</p>
                             <p className="mt-1 text-white/40 text-xs">{title}</p>

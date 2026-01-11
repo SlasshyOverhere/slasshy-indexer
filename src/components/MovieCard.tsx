@@ -76,7 +76,7 @@ export function MovieCard({
           <motion.div
             className="absolute -inset-2 rounded-3xl opacity-0 blur-2xl transition-opacity duration-500 pointer-events-none"
             style={{
-              background: `radial-gradient(circle at center, hsl(263 70% 58% / 0.3) 0%, transparent 70%)`,
+              background: `radial-gradient(circle at center, rgba(255, 255, 255, 0.2) 0%, transparent 70%)`,
             }}
             animate={{ opacity: isHovered ? 1 : 0 }}
           />
@@ -88,7 +88,7 @@ export function MovieCard({
               "bg-card/80 backdrop-blur-sm",
               "border border-white/[0.08]",
               "transition-all duration-500 ease-out",
-              isHovered && "border-primary/40"
+              isHovered && "border-white/30"
             )}
             animate={{
               y: isHovered ? -10 : 0,
@@ -97,7 +97,7 @@ export function MovieCard({
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             style={{
               boxShadow: isHovered
-                ? '0 25px 50px -12px rgba(0,0,0,0.6), 0 0 40px -10px hsl(263 70% 58% / 0.3)'
+                ? '0 25px 50px -12px rgba(0,0,0,0.6), 0 0 40px -10px rgba(255, 255, 255, 0.2)'
                 : '0 4px 6px -1px rgba(0,0,0,0.2)',
             }}
           >
@@ -156,7 +156,7 @@ export function MovieCard({
                       exit={{ opacity: 0, scale: 0.8 }}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/60 backdrop-blur-xl border border-white/10 text-xs font-bold text-white shadow-xl"
                     >
-                      <Clock className="w-3 h-3 text-primary" />
+                      <Clock className="w-3 h-3 text-white" />
                       <span>{Math.round(progress)}%</span>
                     </motion.div>
                   )}
@@ -165,7 +165,7 @@ export function MovieCard({
                       initial={{ opacity: 0, scale: 0.8, x: -10 }}
                       animate={{ opacity: 1, scale: 1, x: 0 }}
                       exit={{ opacity: 0, scale: 0.8 }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/20 backdrop-blur-xl border border-emerald-500/30 text-emerald-400 text-xs font-bold shadow-xl"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-500/20 backdrop-blur-xl border border-gray-500/30 text-gray-400 text-xs font-bold shadow-xl"
                     >
                       <Check className="w-3 h-3" />
                       <span>Watched</span>
@@ -202,7 +202,7 @@ export function MovieCard({
                   transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
                 >
                   {/* Glow ring */}
-                  <div className="absolute inset-0 rounded-full bg-primary blur-xl opacity-60 scale-150 animate-pulse" />
+                  <div className="absolute inset-0 rounded-full bg-white blur-xl opacity-60 scale-150 animate-pulse" />
 
                   {/* Play button */}
                   <motion.div
@@ -225,7 +225,7 @@ export function MovieCard({
                     exit={{ opacity: 0 }}
                   >
                     <motion.div
-                      className="h-full bg-gradient-to-r from-primary via-violet-400 to-accent relative"
+                      className="h-full bg-white relative"
                       initial={{ width: 0 }}
                       animate={{ width: `${progress}%` }}
                       transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
@@ -260,8 +260,8 @@ export function MovieCard({
               )}
               {item.media_type === 'tvshow' && (
                 <>
-                  <span className="w-1 h-1 rounded-full bg-primary/50" />
-                  <span className="text-primary/70 font-semibold">Series</span>
+                  <span className="w-1 h-1 rounded-full bg-white/50" />
+                  <span className="text-white/70 font-semibold">Series</span>
                 </>
               )}
             </div>
@@ -275,8 +275,8 @@ export function MovieCard({
           onClick={() => onClick(item)}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-sm font-medium focus:bg-white/10 focus:text-white transition-colors"
         >
-          <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-            <Play className="w-4 h-4 text-primary" />
+          <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+            <Play className="w-4 h-4 text-white" />
           </div>
           <span>Play Now</span>
         </ContextMenuItem>
@@ -375,7 +375,7 @@ export function ContinueCard({ item, onClick, index = 0 }: ContinueCardProps) {
       <motion.div
         className="absolute -inset-2 rounded-3xl opacity-0 blur-2xl transition-opacity duration-500 pointer-events-none"
         style={{
-          background: `radial-gradient(circle at center, hsl(263 70% 58% / 0.25) 0%, transparent 70%)`,
+          background: `radial-gradient(circle at center, rgba(255, 255, 255, 0.15) 0%, transparent 70%)`,
         }}
         animate={{ opacity: isHovered ? 1 : 0 }}
       />
@@ -386,7 +386,7 @@ export function ContinueCard({ item, onClick, index = 0 }: ContinueCardProps) {
           "h-[155px] min-w-[340px] max-w-[420px]",
           "bg-card/80 backdrop-blur-sm border border-white/[0.08]",
           "transition-all duration-400",
-          isHovered && "border-primary/40"
+          isHovered && "border-white/30"
         )}
         animate={{
           y: isHovered ? -5 : 0,
@@ -395,7 +395,7 @@ export function ContinueCard({ item, onClick, index = 0 }: ContinueCardProps) {
         transition={{ duration: 0.3 }}
         style={{
           boxShadow: isHovered
-            ? '0 20px 40px -12px rgba(0,0,0,0.5), 0 0 30px -5px hsl(263 70% 58% / 0.2)'
+            ? '0 20px 40px -12px rgba(0,0,0,0.5), 0 0 30px -5px rgba(255, 255, 255, 0.15)'
             : '0 4px 6px -1px rgba(0,0,0,0.2)',
         }}
       >
@@ -447,8 +447,8 @@ export function ContinueCard({ item, onClick, index = 0 }: ContinueCardProps) {
         <div className="relative flex-1 p-5 flex flex-col justify-between z-10 min-w-0">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/15 px-2 py-1 rounded-md border border-primary/25">
-                <Play className="w-2.5 h-2.5 fill-primary" />
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white bg-white/15 px-2 py-1 rounded-md border border-white/25">
+                <Play className="w-2.5 h-2.5 fill-white" />
                 Resume
               </span>
               {item.media_type === 'tvshow' && (
@@ -458,7 +458,7 @@ export function ContinueCard({ item, onClick, index = 0 }: ContinueCardProps) {
               )}
             </div>
 
-            <h4 className="font-bold text-[15px] text-white leading-snug line-clamp-1 mb-1 group-hover:text-primary-foreground transition-colors">
+            <h4 className="font-bold text-[15px] text-white leading-snug line-clamp-1 mb-1 group-hover:text-white transition-colors">
               {item.title}
             </h4>
             {item.season_number && item.episode_number && (
@@ -472,7 +472,7 @@ export function ContinueCard({ item, onClick, index = 0 }: ContinueCardProps) {
             {/* Progress bar */}
             <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
               <motion.div
-                className="h-full bg-gradient-to-r from-primary via-violet-400 to-accent relative"
+                className="h-full bg-white relative"
                 initial={{ width: 0 }}
                 animate={{ width: `${progress}%` }}
                 transition={{ duration: 0.8, delay: 0.3 }}

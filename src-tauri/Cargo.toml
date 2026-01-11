@@ -1,6 +1,6 @@
 [package]
 name = "slasshy-desktop"
-version = "0.1.0"
+version = "3.0.0"
 description = "A Tauri Media Library App"
 authors = ["you"]
 license = ""
@@ -9,6 +9,7 @@ edition = "2021"
 
 [build-dependencies]
 tauri-build = { version = "1", features = [] }
+dotenvy = "0.15"
 
 [dependencies]
 tauri = { version = "1", features = [ "system-tray", "shell-open", "dialog-open", "fs-all", "http-all", "protocol-asset"] }
@@ -28,6 +29,7 @@ dirs = "5.0"
 percent-encoding = "2.3"
 rand = "0.8"
 url = "2.5"
+futures-util = "0.3"
 notify-rust = "4"
 oauth2 = "4.4"
 base64 = "0.21"

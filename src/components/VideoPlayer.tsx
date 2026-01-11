@@ -416,8 +416,8 @@ export function VideoPlayer({ src, title, poster, onClose, onProgress, initialTi
             {(isLoading || isTranscoding) && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm z-10 transition-opacity duration-300">
                     <div className="relative">
-                        <Loader2 className="h-16 w-16 animate-spin text-primary" />
-                        <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full" />
+                        <Loader2 className="h-16 w-16 animate-spin text-white" />
+                        <div className="absolute inset-0 bg-white/20 blur-xl rounded-full" />
                     </div>
                     {isTranscoding && (
                         <p className="text-white mt-4 text-sm">Transcoding video for playback...</p>
@@ -500,7 +500,7 @@ export function VideoPlayer({ src, title, poster, onClose, onProgress, initialTi
                             {/* Play/Pause */}
                             <button
                                 onClick={togglePlay}
-                                className="p-2.5 hover:bg-white/10 rounded-full transition-colors text-white hover:text-primary"
+                                className="p-2.5 hover:bg-white/10 rounded-full transition-colors text-white hover:text-white"
                             >
                                 {isPlaying ? (
                                     <Pause className="h-6 w-6 fill-current" />

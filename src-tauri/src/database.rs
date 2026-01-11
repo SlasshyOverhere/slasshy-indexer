@@ -1389,7 +1389,48 @@ impl Database {
         
         results.filter_map(|r| r.ok()).collect::<Vec<_>>().into_iter().map(Ok).collect()
     }
-    
+
+    /// Get cloud info for a series (is_cloud, cloud_folder_id)
+    pub fn get_series_cloud_info(&self, series_id: i64) -> Result<(bool, Option<String>)> {
+        let mut stmt = self.conn.prepare(
+            "SELECT COALESCE(is_cloud, 0), cloud_folder_id FROM media WHERE id = ?"
+        )?;
+
+        stmt.query_row(params![series_id], |row| {
+            Ok((
+                row.get::<_, i32>(0)? == 1,
+                row.get::<_, Option<String>>(1)?,
+            ))
+        })
+    }
+
+    /// Get media info for deletion (file_path, is_cloud, cloud_file_id)
+    pub fn get_media_delete_info(&self, ids: &[i64]) -> Result<Vec<(i64, Option<String>, bool, Option<String>)>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
+        let query = format!(
+            "SELECT id, file_path, COALESCE(is_cloud, 0) as is_cloud, cloud_file_id FROM media WHERE id IN ({})",
+            placeholders.join(", ")
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+        let params: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+
+        let results = stmt.query_map(params.as_slice(), |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, i32>(2)? == 1,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })?;
+
+        results.filter_map(|r| r.ok()).collect::<Vec<_>>().into_iter().map(Ok).collect()
+    }
+
     /// Delete multiple media entries and return their file paths for cleanup
     pub fn delete_media_entries(&self, ids: &[i64]) -> Result<Vec<String>> {
         if ids.is_empty() {

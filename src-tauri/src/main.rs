@@ -14,7 +14,7 @@ use tauri_plugin_autostart::MacosLauncher;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::HashMap;
-use tauri::{State, Window, Manager, SystemTray, SystemTrayMenu, SystemTrayMenuItem, CustomMenuItem, SystemTrayEvent, AppHandle};
+use tauri::{State, Window, Manager, SystemTray, SystemTrayMenu, SystemTrayMenuItem, CustomMenuItem, SystemTrayEvent, AppHandle, WindowBuilder, WindowUrl};
 use serde::Serialize;
 use notify_rust::Notification;
 use std::sync::mpsc;
@@ -266,17 +266,12 @@ async fn gdrive_start_auth() -> Result<String, String> {
 async fn gdrive_complete_auth(state: State<'_, AppState>) -> Result<gdrive::DriveAccountInfo, String> {
     println!("[GDRIVE] Waiting for OAuth callback...");
 
-    let code = if gdrive::is_dev_mode() {
-        // Dev mode: use localhost server
-        println!("[GDRIVE] Using localhost callback server (dev mode)");
+    let code = {
+        // Always use localhost callback server for simplicity and reliability
+        // This avoids deep link registration issues on Windows and provides a better UX
+        // than manual code copying.
+        println!("[GDRIVE] Starting localhost callback server...");
         gdrive::wait_for_oauth_callback().await?
-    } else {
-        // Prod mode: wait for deep link
-        println!("[GDRIVE] Waiting for deep link callback (prod mode)");
-        let rx = OAUTH_CODE_CHANNEL.1.lock().map_err(|e| format!("Lock error: {}", e))?;
-        // Wait up to 5 minutes for the OAuth callback
-        rx.recv_timeout(Duration::from_secs(300))
-            .map_err(|e| format!("OAuth timeout or error: {}. Please try again.", e))?
     };
 
     println!("[GDRIVE] Received authorization code");
@@ -414,12 +409,10 @@ async fn gdrive_scan_folder(
     // Get API key from config
     let api_key = {
         let config = state.config.lock().map_err(|e| e.to_string())?;
-        config.tmdb_api_key.clone().unwrap_or_default()
+        tmdb::get_tmdb_credential(&config.tmdb_api_key.clone().unwrap_or_default())
     };
 
-    if api_key.is_empty() {
-        return Err("TMDB API key not configured. Please set it in Settings.".to_string());
-    }
+    // API key check is no longer needed since we have a default
 
     // Get image cache dir for poster downloads
     let image_cache_dir = database::get_image_cache_dir();
@@ -446,8 +439,8 @@ async fn gdrive_scan_folder(
         let mut movies_count = 0;
         let mut tv_count = 0;
 
-        // Cache for TV shows: title -> (db_id, tmdb_id)
-        let mut tv_show_cache: HashMap<String, (i64, Option<String>)> = HashMap::new();
+        // Cache for TV shows: title -> (db_id, tmdb_id, show_folder_id)
+        let mut tv_show_cache: HashMap<String, (i64, Option<String>, String)> = HashMap::new();
 
         // Cache for season episodes: (tmdb_id, season) -> Vec<episode_info>
         let mut season_cache: HashMap<(String, i32), Vec<tmdb::TmdbEpisodeInfo>> = HashMap::new();
@@ -472,15 +465,22 @@ async fn gdrive_scan_folder(
                 let show_title = parsed.title.clone();
                 let show_title_lower = show_title.to_lowercase();
 
+                // Get the episode's actual parent folder (the TV show folder, not the tracked folder)
+                let episode_parent_folder = file.parents.as_ref()
+                    .and_then(|p| p.first())
+                    .cloned()
+                    .unwrap_or_else(|| folder_id_clone.clone());
+
                 // Check cache first, then database, then TMDB
-                let (db_show_id, tmdb_id) = if let Some(cached) = tv_show_cache.get(&show_title_lower) {
+                let (db_show_id, tmdb_id, show_folder_id) = if let Some(cached) = tv_show_cache.get(&show_title_lower) {
                     cached.clone()
                 } else {
                     // Check if show already exists in database
                     let existing = db.find_tvshow_by_title(&show_title);
 
                     let result = if let Ok(Some(existing_show)) = existing {
-                        (existing_show.id, existing_show.tmdb_id)
+                        // Use existing show's folder or the episode's parent
+                        (existing_show.id, existing_show.tmdb_id, episode_parent_folder.clone())
                     } else {
                         // Search TMDB for the show (only once per show)
                         println!("[CLOUD] Searching TMDB for show: {}", show_title);
@@ -504,16 +504,17 @@ async fn gdrive_scan_folder(
                             None => (show_title.clone(), None, None, None, None),
                         };
 
+                        // Use episode's parent folder as the show's folder ID (for deletion)
                         match db.insert_cloud_tvshow(
                             &title,
                             year,
                             overview.as_deref(),
                             poster_path.as_deref(),
-                            &format!("gdrive:{}", folder_id_clone),
-                            &folder_id_clone,
+                            &format!("gdrive:{}", episode_parent_folder),
+                            &episode_parent_folder,  // Use episode's parent folder, not tracked folder
                             tmdb_id_opt.as_deref(),
                         ) {
-                            Ok(show_id) => (show_id, tmdb_id_opt),
+                            Ok(show_id) => (show_id, tmdb_id_opt, episode_parent_folder.clone()),
                             Err(e) => {
                                 println!("[CLOUD] Failed to insert show: {}", e);
                                 continue;
@@ -567,7 +568,7 @@ async fn gdrive_scan_folder(
                     season,
                     episode,
                     &file.id,
-                    &folder_id_clone,
+                    &show_folder_id,  // Use the show's folder ID, not tracked folder
                     ep_title.as_deref(),
                     ep_overview.as_deref(),
                     ep_still.as_deref(),
@@ -770,13 +771,10 @@ async fn scan_all_cloud_folders(
         // Get API key from config
         let api_key = {
             let config = state.config.lock().map_err(|e| e.to_string())?;
-            config.tmdb_api_key.clone().unwrap_or_default()
+            tmdb::get_tmdb_credential(&config.tmdb_api_key.clone().unwrap_or_default())
         };
 
-        if api_key.is_empty() {
-            println!("[CLOUD SCAN] Skipping {} - no API key", folder_name);
-            continue;
-        }
+        // API key is always available now with default
 
         // Get image cache dir for poster downloads
         let image_cache_dir = database::get_image_cache_dir();
@@ -1264,9 +1262,10 @@ async fn check_cloud_changes(
     if !indexed_items.is_empty() {
         let api_key = {
             let config = state.config.lock().map_err(|e| e.to_string())?;
-            config.tmdb_api_key.clone().unwrap_or_default()
+            tmdb::get_tmdb_credential(&config.tmdb_api_key.clone().unwrap_or_default())
         };
 
+        // API key is always available now with default
         if !api_key.is_empty() {
             let db_path_bg = db_path.clone();
             let image_cache_dir_bg = image_cache_dir.clone();
@@ -1499,92 +1498,16 @@ async fn cleanup_missing_metadata(
     })
 }
 
-// Repair broken file paths - finds files in media folders and updates database
+// Repair broken file paths - not applicable for cloud-only mode
 #[tauri::command]
 async fn repair_file_paths(
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
 ) -> Result<ApiResponse, String> {
-    println!("[REPAIR] Starting file path repair...");
-
-    let config = {
-        let c = state.config.lock().map_err(|e| e.to_string())?;
-        c.clone()
-    };
-
-    let media_folders = config.media_folders.clone();
-    if media_folders.is_empty() {
-        return Err("No media folders configured. Please add folders in Settings first.".to_string());
-    }
-
-    // Get broken paths
-    let broken_paths = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
-        db.get_broken_file_paths().map_err(|e| e.to_string())?
-    };
-
-    if broken_paths.is_empty() {
-        return Ok(ApiResponse {
-            message: "No broken file paths found. Your library is healthy!".to_string(),
-        });
-    }
-
-    println!("[REPAIR] Found {} items with broken file paths", broken_paths.len());
-
-    // Build a map of filename -> full paths by scanning media folders
-    let mut filename_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-
-    for folder in &media_folders {
-        let folder_path = std::path::Path::new(folder);
-        if !folder_path.exists() {
-            continue;
-        }
-
-        for entry in walkdir::WalkDir::new(folder)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-        {
-            if let Some(filename) = entry.path().file_name() {
-                let filename_str = filename.to_string_lossy().to_string();
-                let full_path = entry.path().to_string_lossy().to_string();
-                filename_map.entry(filename_str).or_default().push(full_path);
-            }
-        }
-    }
-
-    // Fix broken paths
-    let mut fixed_count = 0;
-    let mut not_found_count = 0;
-
-    {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
-
-        for (media_id, broken_filename) in &broken_paths {
-            if let Some(full_paths) = filename_map.get(broken_filename) {
-                // Use the first match (there might be duplicates with same name)
-                if let Some(full_path) = full_paths.first() {
-                    if let Err(e) = db.update_file_path(*media_id, full_path) {
-                        println!("[REPAIR] Failed to update path for ID {}: {}", media_id, e);
-                    } else {
-                        println!("[REPAIR] Fixed: {} -> {}", broken_filename, full_path);
-                        fixed_count += 1;
-                    }
-                }
-            } else {
-                println!("[REPAIR] File not found in media folders: {}", broken_filename);
-                not_found_count += 1;
-            }
-        }
-    }
-
-    let message = format!(
-        "Repaired {} file paths. {} files not found in media folders (may need rescan).",
-        fixed_count, not_found_count
-    );
-
-    println!("[REPAIR] {}", message);
-
-    Ok(ApiResponse { message })
+    // In cloud-only mode, file paths are managed by Google Drive
+    // No local file repair is needed
+    Ok(ApiResponse {
+        message: "Cloud media paths are managed automatically by Google Drive. No repair needed.".to_string(),
+    })
 }
 
 // Response for delete operation
@@ -1645,6 +1568,7 @@ fn cleanup_empty_parent_dirs(file_paths: &[String]) {
 }
 
 // Delete media files permanently from disk (bypasses recycle bin)
+// Also handles cloud files by deleting from Google Drive
 #[tauri::command]
 async fn delete_media_files(
     state: State<'_, AppState>,
@@ -1653,43 +1577,78 @@ async fn delete_media_files(
     if media_ids.is_empty() {
         return Err("No media IDs provided".to_string());
     }
-    
+
     println!("[DELETE] Starting permanent deletion for {} items", media_ids.len());
-    
-    // Get file paths and delete from database
-    let file_paths = {
+
+    // Get media info including cloud details
+    let media_info = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
-        db.delete_media_entries(&media_ids).map_err(|e| e.to_string())?
+        db.get_media_delete_info(&media_ids).map_err(|e| e.to_string())?
     };
 
-    let _total_files = file_paths.len();
     let mut deleted_count = 0;
     let mut failed_count = 0;
     let mut deleted_file_paths: Vec<String> = Vec::new();
+    let mut cloud_file_ids_to_delete: Vec<String> = Vec::new();
 
-    // Delete files from disk permanently
-    for file_path in file_paths {
-        let path = std::path::Path::new(&file_path);
-        if path.exists() {
-            match std::fs::remove_file(path) {
-                Ok(_) => {
-                    println!("[DELETE] Successfully deleted: {}", file_path);
-                    deleted_file_paths.push(file_path);
-                    deleted_count += 1;
-                }
-                Err(e) => {
-                    println!("[DELETE] Failed to delete {}: {}", file_path, e);
-                    failed_count += 1;
-                }
+    // Separate cloud and local files
+    for (id, file_path, is_cloud, cloud_file_id) in &media_info {
+        if *is_cloud {
+            // Cloud file - queue for Google Drive deletion
+            if let Some(cloud_id) = cloud_file_id {
+                println!("[DELETE] Queuing cloud file for deletion: {} (cloud_file_id: {})",
+                    file_path.as_deref().unwrap_or("unknown"), cloud_id);
+                cloud_file_ids_to_delete.push(cloud_id.clone());
             }
         } else {
-            println!("[DELETE] File not found (already deleted?): {}", file_path);
-            deleted_file_paths.push(file_path);
-            deleted_count += 1; // Count as success since file doesn't exist
+            // Local file - delete from disk
+            if let Some(path_str) = file_path {
+                let path = std::path::Path::new(path_str);
+                if path.exists() {
+                    match std::fs::remove_file(path) {
+                        Ok(_) => {
+                            println!("[DELETE] Successfully deleted local file: {}", path_str);
+                            deleted_file_paths.push(path_str.clone());
+                            deleted_count += 1;
+                        }
+                        Err(e) => {
+                            println!("[DELETE] Failed to delete {}: {}", path_str, e);
+                            failed_count += 1;
+                        }
+                    }
+                } else {
+                    println!("[DELETE] Local file not found (already deleted?): {}", path_str);
+                    deleted_file_paths.push(path_str.clone());
+                    deleted_count += 1;
+                }
+            }
         }
     }
 
-    // Clean up empty parent directories
+    // Delete cloud files from Google Drive
+    if !cloud_file_ids_to_delete.is_empty() {
+        println!("[DELETE] Deleting {} cloud files from Google Drive", cloud_file_ids_to_delete.len());
+        for cloud_file_id in cloud_file_ids_to_delete {
+            match state.gdrive_client.delete_file(&cloud_file_id).await {
+                Ok(_) => {
+                    println!("[DELETE] Successfully deleted cloud file: {}", cloud_file_id);
+                    deleted_count += 1;
+                }
+                Err(e) => {
+                    println!("[DELETE] Failed to delete cloud file {}: {}", cloud_file_id, e);
+                    failed_count += 1;
+                }
+            }
+        }
+    }
+
+    // Delete from database
+    {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        db.delete_media_entries(&media_ids).map_err(|e| e.to_string())?;
+    }
+
+    // Clean up empty parent directories (only for local files)
     cleanup_empty_parent_dirs(&deleted_file_paths);
 
     let message = if failed_count == 0 {
@@ -1697,9 +1656,9 @@ async fn delete_media_files(
     } else {
         format!("Deleted {} file(s), {} failed", deleted_count, failed_count)
     };
-    
+
     println!("[DELETE] Complete: {}", message);
-    
+
     Ok(DeleteResponse {
         success: failed_count == 0,
         deleted_count,
@@ -1748,27 +1707,68 @@ async fn delete_series(
     delete_files: bool,
 ) -> Result<DeleteResponse, String> {
     println!("[DELETE] Deleting series ID {} (delete_files: {})", series_id, delete_files);
-    
-    // Get all episode IDs first
+
+    // Get series cloud info first
+    let (is_cloud_series, cloud_folder_id) = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        db.get_series_cloud_info(series_id).map_err(|e| e.to_string())?
+    };
+
+    println!("[DELETE] Series is_cloud: {}, cloud_folder_id: {:?}", is_cloud_series, cloud_folder_id);
+
+    // Get all episode IDs and their cloud info
     let episode_ids: Vec<i64> = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
         let episodes = db.get_episodes(series_id).map_err(|e| e.to_string())?;
         episodes.into_iter().map(|ep| ep.id).collect()
     };
-    
+
     let mut total_deleted = 0;
     let mut total_failed = 0;
     let mut deleted_file_paths: Vec<String> = Vec::new();
 
-    // Delete episodes first if requested
+    // Delete episodes if there are any
     if !episode_ids.is_empty() {
-        let file_paths = {
+        // Get detailed info for cloud file deletion
+        let episode_info = {
             let db = state.db.lock().map_err(|e| e.to_string())?;
-            db.delete_media_entries(&episode_ids).map_err(|e| e.to_string())?
+            db.get_media_delete_info(&episode_ids).map_err(|e| e.to_string())?
         };
 
         if delete_files {
-            for file_path in file_paths {
+            // Handle cloud episode files
+            let mut cloud_file_ids: Vec<String> = Vec::new();
+            let mut local_file_paths: Vec<String> = Vec::new();
+
+            for (_id, file_path, is_cloud, cloud_file_id) in &episode_info {
+                if *is_cloud {
+                    if let Some(cloud_id) = cloud_file_id {
+                        cloud_file_ids.push(cloud_id.clone());
+                    }
+                } else if let Some(path) = file_path {
+                    local_file_paths.push(path.clone());
+                }
+            }
+
+            // Delete cloud files from Google Drive
+            if !cloud_file_ids.is_empty() {
+                println!("[DELETE] Deleting {} cloud episode files from Google Drive", cloud_file_ids.len());
+                for cloud_file_id in cloud_file_ids {
+                    match state.gdrive_client.delete_file(&cloud_file_id).await {
+                        Ok(_) => {
+                            println!("[DELETE] Deleted cloud episode: {}", cloud_file_id);
+                            total_deleted += 1;
+                        }
+                        Err(e) => {
+                            println!("[DELETE] Failed to delete cloud episode {}: {}", cloud_file_id, e);
+                            total_failed += 1;
+                        }
+                    }
+                }
+            }
+
+            // Delete local files
+            for file_path in local_file_paths {
                 let path = std::path::Path::new(&file_path);
                 if path.exists() {
                     match std::fs::remove_file(path) {
@@ -1790,9 +1790,15 @@ async fn delete_series(
         } else {
             total_deleted = episode_ids.len();
         }
+
+        // Delete episode entries from database
+        {
+            let db = state.db.lock().map_err(|e| e.to_string())?;
+            db.delete_media_entries(&episode_ids).map_err(|e| e.to_string())?;
+        }
     }
 
-    // Clean up empty parent directories
+    // Clean up empty parent directories (only for local files)
     if delete_files && !deleted_file_paths.is_empty() {
         cleanup_empty_parent_dirs(&deleted_file_paths);
     }
@@ -1802,15 +1808,42 @@ async fn delete_series(
         let db = state.db.lock().map_err(|e| e.to_string())?;
         db.remove_media(series_id).map_err(|e| e.to_string())?;
     }
-    
+
     let message = format!("Deleted series and {} episode(s)", total_deleted);
     println!("[DELETE] {}", message);
-    
+
     Ok(DeleteResponse {
         success: total_failed == 0,
         deleted_count: total_deleted + 1, // +1 for the series itself
         failed_count: total_failed,
         message,
+    })
+}
+
+// Remove a TV series from the database (does NOT delete files from Drive)
+// Use this when you just want to remove the series from the app
+#[tauri::command]
+async fn delete_series_cloud_folder(
+    state: State<'_, AppState>,
+    series_id: i64,
+) -> Result<ApiResponse, String> {
+    // Get series title for the message
+    let series_title = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let media = db.get_media_by_id(series_id).map_err(|e| e.to_string())?;
+        media.title
+    };
+
+    println!("[DELETE] Removing series '{}' (ID: {}) from database only", series_title, series_id);
+
+    // Just remove from database - don't touch Google Drive
+    {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        db.remove_media(series_id).map_err(|e| e.to_string())?;
+    }
+
+    Ok(ApiResponse {
+        message: format!("Series '{}' removed from library", series_title),
     })
 }
 
@@ -1851,55 +1884,6 @@ async fn merge_duplicate_shows(state: State<'_, AppState>) -> Result<ApiResponse
     })
 }
 
-// Scan library with event emissions
-#[tauri::command]
-async fn scan_library(
-    window: Window,
-    state: State<'_, AppState>,
-) -> Result<ApiResponse, String> {
-    // Check if already scanning
-    if state.is_scanning.load(Ordering::SeqCst) {
-        return Ok(ApiResponse {
-            message: "Scan already in progress.".to_string(),
-        });
-    }
-    
-    let config = {
-        let c = state.config.lock().map_err(|e| e.to_string())?;
-        c.clone()
-    };
-    
-    // Mark as scanning and get a reference for the thread
-    state.is_scanning.store(true, Ordering::SeqCst);
-    let is_scanning = state.is_scanning.clone();
-    
-    // Spawn scan in background
-    let db_path = database::get_database_path();
-    let image_cache_dir = database::get_image_cache_dir();
-    
-    std::thread::spawn(move || {
-        println!("[SCAN] Starting library scan...");
-        
-        if let Ok(db) = database::Database::new(&db_path) {
-            media_manager::scan_media_folders_with_events(&db, &config, &image_cache_dir, &window);
-        }
-        
-        // Reset scanning flag
-        is_scanning.store(false, Ordering::SeqCst);
-        
-        // Emit scan complete event
-        let _ = window.emit("scan-complete", ScanCompletePayload {
-            movies_count: 0,
-            tv_count: 0,
-        });
-        
-        println!("[SCAN] Library scan complete!");
-    });
-    
-    Ok(ApiResponse {
-        message: "Scan initiated.".to_string(),
-    })
-}
 
 // Get resume info for a media item
 #[tauri::command]
@@ -2043,16 +2027,11 @@ async fn fix_match(
         let c = state.config.lock().map_err(|e| e.to_string())?;
         c.clone()
     };
-    
-    let api_key = config.tmdb_api_key.as_ref()
-        .ok_or_else(|| "TMDB API Key not set".to_string())?;
-    
-    if api_key.is_empty() {
-        return Err("TMDB API Key not set".to_string());
-    }
-    
+
+    let api_key = tmdb::get_tmdb_credential(&config.tmdb_api_key.clone().unwrap_or_default());
+
     let image_cache_dir = database::get_image_cache_dir();
-    let metadata = tmdb::fetch_metadata_by_id(api_key, &tmdb_id, &media_type, &image_cache_dir)
+    let metadata = tmdb::fetch_metadata_by_id(&api_key, &tmdb_id, &media_type, &image_cache_dir)
         .map_err(|e| e.to_string())?;
     
     let db = state.db.lock().map_err(|e| e.to_string())?;
@@ -2619,12 +2598,8 @@ async fn get_tv_details(
 ) -> Result<TvShowDetails, String> {
     let credential = {
         let config = state.config.lock().map_err(|e| e.to_string())?;
-        config.tmdb_api_key.clone().unwrap_or_default()
+        tmdb::get_tmdb_credential(&config.tmdb_api_key.clone().unwrap_or_default())
     };
-
-    if credential.is_empty() {
-        return Err("TMDB API key/token not configured".to_string());
-    }
 
     let url = build_tmdb_api_url(&format!("/tv/{}", tv_id), &credential, "");
 
@@ -2735,12 +2710,8 @@ async fn get_tv_season_episodes(
 
     let credential = {
         let config = state.config.lock().map_err(|e| e.to_string())?;
-        config.tmdb_api_key.clone().unwrap_or_default()
+        tmdb::get_tmdb_credential(&config.tmdb_api_key.clone().unwrap_or_default())
     };
-
-    if credential.is_empty() {
-        return Err("TMDB API key/token not configured".to_string());
-    }
 
     let url = build_tmdb_api_url(&format!("/tv/{}/season/{}", tv_id, season_number), &credential, "");
 
@@ -2799,12 +2770,8 @@ async fn refresh_series_metadata(
 ) -> Result<String, String> {
     let credential = {
         let config = state.config.lock().map_err(|e| e.to_string())?;
-        config.tmdb_api_key.clone().unwrap_or_default()
+        tmdb::get_tmdb_credential(&config.tmdb_api_key.clone().unwrap_or_default())
     };
-
-    if credential.is_empty() {
-        return Err("TMDB API key/token not configured".to_string());
-    }
 
     let image_cache_dir = database::get_image_cache_dir();
     let tv_id_str = tv_id.to_string();
@@ -2917,15 +2884,10 @@ async fn search_tmdb(
             println!("[SEARCH_TMDB] Failed to lock config: {}", e);
             e.to_string()
         })?;
-        let key = config.tmdb_api_key.clone().unwrap_or_default();
+        let key = tmdb::get_tmdb_credential(&config.tmdb_api_key.clone().unwrap_or_default());
         println!("[SEARCH_TMDB] Credential length: {} (is_token: {})", key.len(), is_access_token(&key));
         key
     };
-
-    if credential.is_empty() {
-        println!("[SEARCH_TMDB] API key/token is empty!");
-        return Err("TMDB API key/token not configured".to_string());
-    }
 
     let encoded_query = percent_encoding::utf8_percent_encode(&query, percent_encoding::NON_ALPHANUMERIC).to_string();
     let url = build_tmdb_api_url("/search/multi", &credential, &format!("query={}&include_adult=false", encoded_query));
@@ -3425,13 +3387,604 @@ async fn clear_cloud_cache(state: State<'_, AppState>) -> Result<ApiResponse, St
     })
 }
 
+/// Helper function to create the main window
+/// Used when showing the app from tray - creates a new window if none exists
+fn create_main_window(app: &AppHandle) -> Result<tauri::Window, tauri::Error> {
+    WindowBuilder::new(
+        app,
+        "main",
+        WindowUrl::App("index.html".into())
+    )
+    .title("Slasshy Media Indexer")
+    .inner_size(1200.0, 800.0)
+    .resizable(true)
+    .build()
+}
+
+/// Background cloud change detection polling
+/// Runs independently of the window to detect new files even when minimized to tray
+async fn background_cloud_poll(app_handle: AppHandle) {
+    use std::time::Duration;
+
+    // Initial delay to let app fully initialize (same as frontend)
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    println!("[CLOUD BG] Background cloud polling started (5-second interval)");
+
+    loop {
+        // Get state from app handle
+        let state: tauri::State<'_, AppState> = app_handle.state();
+
+        // Check if authenticated
+        if !state.gdrive_client.is_authenticated() {
+            // Not connected - wait and retry
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            continue;
+        }
+
+        // Check if we have folders to monitor
+        let has_folders = {
+            if let Ok(db) = state.db.lock() {
+                db.get_cloud_folders().map(|f| !f.is_empty()).unwrap_or(false)
+            } else {
+                false
+            }
+        };
+
+        if !has_folders {
+            // No folders - wait and retry
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            continue;
+        }
+
+        // Perform the actual check
+        match background_check_cloud_changes(&app_handle).await {
+            Ok(result) => {
+                if result.indexed_count > 0 {
+                    println!("[CLOUD BG] ✓ Indexed {} new items ({} movies, {} TV)",
+                        result.indexed_count, result.movies_count, result.tv_count);
+
+                    // Emit event to window if it exists
+                    if let Some(window) = app_handle.get_window("main") {
+                        window.emit("library-updated", ()).ok();
+                    }
+                }
+            }
+            Err(e) => {
+                println!("[CLOUD BG] Poll error: {}", e);
+            }
+        }
+
+        // Wait 5 seconds before next poll (same as frontend)
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
+/// Background version of check_cloud_changes that doesn't require a Window parameter
+async fn background_check_cloud_changes(app_handle: &AppHandle) -> Result<CloudIndexResult, String> {
+    let state: tauri::State<'_, AppState> = app_handle.state();
+    let start_time = std::time::Instant::now();
+
+    println!("[CLOUD BG] ══════════════════════════════════════════");
+    println!("[CLOUD BG] Starting change detection poll...");
+
+    // Check if authenticated
+    if !state.gdrive_client.is_authenticated() {
+        println!("[CLOUD BG] Not authenticated - skipping");
+        println!("[CLOUD BG] ══════════════════════════════════════════");
+        return Ok(CloudIndexResult {
+            success: true,
+            indexed_count: 0,
+            skipped_count: 0,
+            movies_count: 0,
+            tv_count: 0,
+            message: "Not connected to Google Drive".to_string(),
+        });
+    }
+
+    // Get or initialize the changes token
+    let current_token = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        db.get_gdrive_changes_token().map_err(|e| e.to_string())?
+    };
+
+    let page_token = match current_token {
+        Some(token) => {
+            println!("[CLOUD BG] Using existing token: {}...", &token[..token.len().min(20)]);
+            token
+        },
+        None => {
+            // First time - get the start token
+            println!("[CLOUD BG] No token found - initializing changes tracking...");
+            let start_token = state.gdrive_client.get_changes_start_token().await?;
+            println!("[CLOUD BG] Got start token: {}...", &start_token[..start_token.len().min(20)]);
+            let db = state.db.lock().map_err(|e| e.to_string())?;
+            db.set_gdrive_changes_token(&start_token).map_err(|e| e.to_string())?;
+            println!("[CLOUD BG] Token saved - will detect changes on next poll");
+            println!("[CLOUD BG] ══════════════════════════════════════════");
+            return Ok(CloudIndexResult {
+                success: true,
+                indexed_count: 0,
+                skipped_count: 0,
+                movies_count: 0,
+                tv_count: 0,
+                message: "Changes tracking initialized".to_string(),
+            });
+        }
+    };
+
+    // Note: We no longer filter by tracked folders - index all video files in Drive
+    println!("[CLOUD BG] Monitoring entire Google Drive for changes");
+
+    // Get changes since last check
+    let api_start = std::time::Instant::now();
+    let (changed_files, new_token) = state.gdrive_client.get_video_changes(&page_token).await?;
+    let api_duration = api_start.elapsed();
+    println!("[CLOUD BG] Changes API call took {:?}", api_duration);
+
+    // Save the new token immediately
+    {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        db.set_gdrive_changes_token(&new_token).map_err(|e| e.to_string())?;
+    }
+
+    if changed_files.is_empty() {
+        let total_duration = start_time.elapsed();
+        println!("[CLOUD BG] No changes detected (total: {:?})", total_duration);
+        println!("[CLOUD BG] ══════════════════════════════════════════");
+        return Ok(CloudIndexResult {
+            success: true,
+            indexed_count: 0,
+            skipped_count: 0,
+            movies_count: 0,
+            tv_count: 0,
+            message: "No new files detected".to_string(),
+        });
+    }
+
+    println!("[CLOUD BG] Detected {} changed video file(s)", changed_files.len());
+
+    // Index all detected video files (no folder filtering)
+    let files_to_index = changed_files;
+
+    if files_to_index.is_empty() {
+        return Ok(CloudIndexResult {
+            success: true,
+            indexed_count: 0,
+            skipped_count: 0,
+            movies_count: 0,
+            tv_count: 0,
+            message: "No new files detected".to_string(),
+        });
+    }
+
+    // Get API key from config
+    let api_key = {
+        let config = state.config.lock().map_err(|e| e.to_string())?;
+        tmdb::get_tmdb_credential(&config.tmdb_api_key.clone().unwrap_or_default())
+    };
+
+    let image_cache_dir = database::get_image_cache_dir();
+    std::fs::create_dir_all(&image_cache_dir).ok();
+    let db_path = database::get_database_path();
+
+    // PHASE 1: Add files immediately without metadata
+    let phase1_result = {
+        let db_path_clone = db_path.clone();
+        let files_to_index_clone: Vec<_> = files_to_index.iter().map(|f| {
+            (f.id.clone(), f.name.clone(), f.parents.clone())
+        }).collect();
+
+        tokio::task::spawn_blocking(move || {
+            let db = match database::Database::new(&db_path_clone) {
+                Ok(d) => d,
+                Err(e) => return Err(format!("Failed to open database: {}", e)),
+            };
+
+            let mut indexed_items: Vec<(i64, String, String, bool, Option<i32>, Option<i32>, String)> = Vec::new();
+            let mut skipped_count = 0;
+            let mut movies_count = 0;
+            let mut tv_count = 0;
+            let mut tv_show_cache: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+
+            for (file_id, file_name, parents) in files_to_index_clone {
+                if db.cloud_file_exists(&file_id) {
+                    skipped_count += 1;
+                    continue;
+                }
+
+                if let Ok(Some(_)) = db.get_media_by_file_path(&file_name) {
+                    skipped_count += 1;
+                    continue;
+                }
+
+                let folder_id = parents.as_ref()
+                    .and_then(|p| p.first())
+                    .cloned()
+                    .unwrap_or_default();
+
+                let parsed = media_manager::parse_cloud_filename(&file_name);
+                let is_tv_show = parsed.season.is_some() && parsed.episode.is_some();
+
+                if is_tv_show {
+                    let season = parsed.season.unwrap();
+                    let episode = parsed.episode.unwrap();
+                    let show_title = parsed.title.clone();
+                    let show_title_lower = show_title.to_lowercase();
+
+                    let db_show_id = if let Some(&cached_id) = tv_show_cache.get(&show_title_lower) {
+                        cached_id
+                    } else {
+                        let existing = db.find_tvshow_by_title(&show_title);
+                        let show_id = match existing {
+                            Ok(Some(existing_show)) => existing_show.id,
+                            Ok(None) => {
+                                let show_path = format!("gdrive:{}:{}", folder_id, show_title.to_lowercase().replace(" ", "_"));
+                                match db.insert_cloud_tvshow(&show_title, None, None, None, &show_path, &folder_id, None) {
+                                    Ok(id) => id,
+                                    Err(_) => continue,
+                                }
+                            }
+                            Err(_) => continue,
+                        };
+                        tv_show_cache.insert(show_title_lower, show_id);
+                        show_id
+                    };
+
+                    match db.insert_cloud_episode(&show_title, &file_name, db_show_id, season, episode,
+                        &file_id, &folder_id, None, None, None) {
+                        Ok(ep_id) => {
+                            indexed_items.push((ep_id, show_title, file_id, true, Some(season), Some(episode), folder_id));
+                            tv_count += 1;
+                        }
+                        Err(_) => continue,
+                    }
+                } else {
+                    match db.insert_cloud_movie(&parsed.title, parsed.year, None, None,
+                        &file_name, &file_id, &folder_id, None) {
+                        Ok(movie_id) => {
+                            indexed_items.push((movie_id, parsed.title, file_id, false, None, None, folder_id));
+                            movies_count += 1;
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+
+            Ok((indexed_items, skipped_count, movies_count, tv_count))
+        }).await.map_err(|e| format!("Task failed: {}", e))?
+    }?;
+
+    let (indexed_items, skipped_count, movies_count, tv_count) = phase1_result;
+    let indexed_count = indexed_items.len();
+
+    // Send notifications for new items
+    if indexed_count > 0 {
+        let titles: Vec<String> = indexed_items.iter().map(|(_, title, _, is_tv, season, episode, _)| {
+            if *is_tv {
+                format!("{} S{:02}E{:02}", title, season.unwrap_or(1), episode.unwrap_or(1))
+            } else {
+                title.clone()
+            }
+        }).collect();
+
+        for title in &titles {
+            Notification::new()
+                .summary(&format!("{} added to your library", title))
+                .appname("Slasshy")
+                .timeout(notify_rust::Timeout::Milliseconds(3000))
+                .show()
+                .ok();
+        }
+
+        // Emit library-updated if window exists
+        if let Some(window) = app_handle.get_window("main") {
+            window.emit("library-updated", ()).ok();
+        }
+    }
+
+    // PHASE 2: Fetch metadata in background (if API key configured)
+    if !indexed_items.is_empty() && !api_key.is_empty() {
+        let db_path_bg = db_path.clone();
+        let image_cache_dir_bg = image_cache_dir.clone();
+        let app_handle_clone = app_handle.clone();
+
+        tokio::spawn(async move {
+            let _ = tokio::task::spawn_blocking(move || {
+                let db = match database::Database::new(&db_path_bg) {
+                    Ok(d) => d,
+                    Err(_) => return,
+                };
+
+                let mut tv_metadata_cache: std::collections::HashMap<String, Option<tmdb::TmdbMetadata>> = std::collections::HashMap::new();
+                let mut tv_show_updated: std::collections::HashSet<String> = std::collections::HashSet::new();
+                let mut season_cache: std::collections::HashMap<(String, i32), Vec<tmdb::TmdbEpisodeInfo>> = std::collections::HashMap::new();
+
+                for (media_id, title, _file_id, is_tv, season_opt, episode_opt, _folder_id) in indexed_items {
+                    if is_tv {
+                        let season = season_opt.unwrap_or(1);
+                        let episode = episode_opt.unwrap_or(1);
+                        let title_lower = title.to_lowercase();
+
+                        let show_meta = if let Some(cached) = tv_metadata_cache.get(&title_lower) {
+                            cached.clone()
+                        } else {
+                            let meta = tmdb::search_metadata(&api_key, &title, "tv", None, &image_cache_dir_bg).ok().flatten();
+                            tv_metadata_cache.insert(title_lower.clone(), meta.clone());
+                            meta
+                        };
+
+                        if let Some(ref meta) = show_meta {
+                            if !tv_show_updated.contains(&title_lower) {
+                                if let Ok(Some(show)) = db.find_tvshow_by_title(&title) {
+                                    db.update_metadata(show.id, meta).ok();
+                                }
+                                tv_show_updated.insert(title_lower.clone());
+                            }
+
+                            if let Some(ref tmdb_id) = meta.tmdb_id {
+                                let cache_key = (tmdb_id.clone(), season);
+                                let episodes = if let Some(cached_eps) = season_cache.get(&cache_key) {
+                                    cached_eps.clone()
+                                } else {
+                                    match tmdb::fetch_season_episodes(&api_key, tmdb_id, season, &title, &image_cache_dir_bg) {
+                                        Ok(season_info) => {
+                                            let eps = season_info.episodes.clone();
+                                            season_cache.insert(cache_key.clone(), eps.clone());
+                                            eps
+                                        }
+                                        Err(_) => {
+                                            season_cache.insert(cache_key.clone(), Vec::new());
+                                            Vec::new()
+                                        }
+                                    }
+                                };
+
+                                if let Some(ep_info) = episodes.iter().find(|e| e.episode_number == episode) {
+                                    db.update_episode_metadata(
+                                        media_id,
+                                        Some(&ep_info.name),
+                                        ep_info.overview.as_deref(),
+                                        ep_info.still_path.as_deref()
+                                    ).ok();
+                                }
+                            }
+                        }
+                    } else {
+                        if let Ok(Some(meta)) = tmdb::search_metadata(&api_key, &title, "movie", None, &image_cache_dir_bg) {
+                            db.update_metadata(media_id, &meta).ok();
+                        }
+                    }
+                }
+            }).await;
+
+            // Emit library-updated again after metadata fetch
+            if let Some(window) = app_handle_clone.get_window("main") {
+                window.emit("library-updated", ()).ok();
+            }
+        });
+    }
+
+    let total_duration = start_time.elapsed();
+    println!("[CLOUD BG] Poll complete: {} indexed, {} skipped ({:?})", indexed_count, skipped_count, total_duration);
+
+    Ok(CloudIndexResult {
+        success: true,
+        indexed_count,
+        skipped_count,
+        movies_count,
+        tv_count,
+        message: format!("Indexed {} new files", indexed_count),
+    })
+}
+
+// ============== AUTO-UPDATE COMMANDS ==============
+
+// GitHub PAT for accessing private releases
+const GITHUB_RELEASE_TOKEN: &str = ""; // User will provide their PAT
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UpdateInfo {
+    pub available: bool,
+    pub current_version: String,
+    pub latest_version: String,
+    pub release_notes: String,
+    pub download_url: Option<String>,
+    pub published_at: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct GitHubRelease {
+    tag_name: String,
+    name: Option<String>,
+    body: Option<String>,
+    published_at: Option<String>,
+    assets: Vec<GitHubAsset>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct GitHubAsset {
+    name: String,
+    browser_download_url: String,
+    size: i64,
+}
+
+/// Check for updates from GitHub releases
+#[tauri::command]
+async fn check_for_updates() -> Result<UpdateInfo, String> {
+    let current_version = env!("CARGO_PKG_VERSION");
+    let repo = "SlasshyOverhere/slasshy-desktop";
+
+    println!("[UPDATE] Checking for updates... Current version: {}", current_version);
+
+    let url = format!("https://api.github.com/repos/{}/releases/latest", repo);
+
+    let client = reqwest::Client::new();
+    let mut request = client.get(&url)
+        .header("User-Agent", "Slasshy-Desktop-Updater")
+        .header("Accept", "application/vnd.github+json");
+
+    // Add auth header if PAT is configured
+    if !GITHUB_RELEASE_TOKEN.is_empty() {
+        request = request.header("Authorization", format!("Bearer {}", GITHUB_RELEASE_TOKEN));
+    }
+
+    let response = request.send().await.map_err(|e| format!("Failed to check for updates: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("GitHub API error ({}): {}", status, error_text));
+    }
+
+    let release: GitHubRelease = response.json().await.map_err(|e| format!("Failed to parse release: {}", e))?;
+
+    // Extract version from tag (remove 'v' prefix if present)
+    let latest_version = release.tag_name.trim_start_matches('v').to_string();
+
+    // Compare versions
+    let is_newer = version_compare(&latest_version, current_version);
+
+    // Find Windows installer asset
+    let download_url = release.assets.iter()
+        .find(|a| a.name.ends_with(".msi") || a.name.ends_with(".exe") || a.name.ends_with("_x64-setup.exe"))
+        .map(|a| a.browser_download_url.clone());
+
+    println!("[UPDATE] Latest version: {} (newer: {})", latest_version, is_newer);
+
+    Ok(UpdateInfo {
+        available: is_newer,
+        current_version: current_version.to_string(),
+        latest_version,
+        release_notes: release.body.unwrap_or_default(),
+        download_url,
+        published_at: release.published_at,
+    })
+}
+
+/// Simple version comparison (assumes semver-like versions)
+fn version_compare(latest: &str, current: &str) -> bool {
+    let parse_version = |v: &str| -> Vec<u32> {
+        v.split('.')
+            .filter_map(|s| s.parse().ok())
+            .collect()
+    };
+
+    let latest_parts = parse_version(latest);
+    let current_parts = parse_version(current);
+
+    for i in 0..3 {
+        let l = latest_parts.get(i).copied().unwrap_or(0);
+        let c = current_parts.get(i).copied().unwrap_or(0);
+        if l > c {
+            return true;
+        }
+        if l < c {
+            return false;
+        }
+    }
+    false
+}
+
+/// Download update to temp directory
+#[tauri::command]
+async fn download_update(
+    window: tauri::Window,
+    url: String,
+) -> Result<String, String> {
+    use std::io::Write;
+
+    println!("[UPDATE] Downloading update from: {}", url);
+
+    let client = reqwest::Client::new();
+    let mut request = client.get(&url);
+
+    // Add auth header if PAT is configured
+    if !GITHUB_RELEASE_TOKEN.is_empty() {
+        request = request.header("Authorization", format!("Bearer {}", GITHUB_RELEASE_TOKEN));
+    }
+
+    let response = request.send().await.map_err(|e| format!("Failed to start download: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Download failed: HTTP {}", response.status()));
+    }
+
+    let total_size = response.content_length().unwrap_or(0);
+    let filename = url.split('/').last().unwrap_or("update.exe");
+    let temp_dir = std::env::temp_dir();
+    let file_path = temp_dir.join(filename);
+
+    let mut file = std::fs::File::create(&file_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+
+    let mut downloaded: u64 = 0;
+    let mut stream = response.bytes_stream();
+
+    use futures_util::StreamExt;
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| format!("Download error: {}", e))?;
+        file.write_all(&chunk).map_err(|e| format!("Write error: {}", e))?;
+        downloaded += chunk.len() as u64;
+
+        // Emit progress event
+        if total_size > 0 {
+            let progress = (downloaded as f64 / total_size as f64) * 100.0;
+            window.emit("update-download-progress", serde_json::json!({
+                "downloaded": downloaded,
+                "total": total_size,
+                "progress": progress
+            })).ok();
+        }
+    }
+
+    println!("[UPDATE] Download complete: {:?}", file_path);
+
+    Ok(file_path.to_string_lossy().to_string())
+}
+
+/// Install update and restart app
+#[tauri::command]
+async fn install_update(installer_path: String) -> Result<(), String> {
+    use std::process::Command;
+
+    println!("[UPDATE] Installing update from: {}", installer_path);
+
+    // Launch the installer
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .args(["/C", "start", "", &installer_path])
+            .spawn()
+            .map_err(|e| format!("Failed to launch installer: {}", e))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Command::new("open")
+            .arg(&installer_path)
+            .spawn()
+            .map_err(|e| format!("Failed to launch installer: {}", e))?;
+    }
+
+    // Exit the app to allow installer to run
+    println!("[UPDATE] Exiting app for update installation...");
+    std::process::exit(0);
+}
+
+/// Get current app version
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 fn main() {
     // Load .env file from project root (for development)
     // This allows setting GDRIVE_CLIENT_ID and GDRIVE_CLIENT_SECRET
     dotenvy::dotenv().ok();
 
     // Prepare deep link - must be done before building the app
-    // This registers the slasshy:// protocol handler
+    // This registers the slasshyindexer:// protocol handler
     tauri_plugin_deep_link::prepare("com.slasshy.desktop");
 
     // Initialize paths
@@ -3475,18 +4028,48 @@ fn main() {
         .on_system_tray_event(|app, event| {
             match event {
                 SystemTrayEvent::LeftClick { .. } => {
-                    // Show window on left click
-                    if let Some(window) = app.get_window("main") {
-                        window.show().ok();
-                        window.set_focus().ok();
+                    // Show window on left click - create if destroyed
+                    match app.get_window("main") {
+                        Some(window) => {
+                            window.show().ok();
+                            window.set_focus().ok();
+                        }
+                        None => {
+                            // Window was destroyed, create a new one
+                            println!("[TRAY] Creating new window...");
+                            match create_main_window(app) {
+                                Ok(window) => {
+                                    window.set_focus().ok();
+                                    println!("[TRAY] New window created");
+                                }
+                                Err(e) => {
+                                    println!("[TRAY] Failed to create window: {}", e);
+                                }
+                            }
+                        }
                     }
                 }
                 SystemTrayEvent::MenuItemClick { id, .. } => {
                     match id.as_str() {
                         "show" => {
-                            if let Some(window) = app.get_window("main") {
-                                window.show().ok();
-                                window.set_focus().ok();
+                            match app.get_window("main") {
+                                Some(window) => {
+                                    window.show().ok();
+                                    window.set_focus().ok();
+                                }
+                                None => {
+                                    // Window was destroyed, create a new one
+                                    println!("[TRAY] Creating new window...");
+                                    match create_main_window(app) {
+                                        Ok(window) => {
+                                            window.set_focus().ok();
+                                            println!("[TRAY] New window created");
+                                        }
+                                        Err(e) => {
+                                            println!("[TRAY] Failed to create window: {}", e);
+                                        }
+                                    }
+                                }
                             }
                         }
                         "quit" => {
@@ -3502,12 +4085,12 @@ fn main() {
         .manage(state)
         .setup(|app| {
             // Register deep link handler for OAuth callback
-            // The callback page redirects to: slasshy://oauth?code=XXX
+            // The callback page redirects to: slasshyindexer://oauth?code=XXX
             let handle = app.handle();
-            tauri_plugin_deep_link::register("slasshy", move |request| {
+            tauri_plugin_deep_link::register("slasshyindexer", move |request| {
                 println!("[DEEPLINK] Received: {}", request);
 
-                // Parse the deep link URL: slasshy://oauth?code=XXX
+                // Parse the deep link URL: slasshyindexer://oauth?code=XXX
                 if let Ok(url) = url::Url::parse(&request) {
                     // Look for the authorization code
                     if let Some(code) = url.query_pairs().find(|(k, _)| k == "code").map(|(_, v)| v.to_string()) {
@@ -3551,8 +4134,11 @@ fn main() {
                 }
             }
 
-            // Cloud change detection is handled by the frontend polling checkCloudChanges
-            // No local file watcher needed - Google Drive only
+            // Start background cloud polling (runs independently of window)
+            let app_handle_for_polling = app.handle();
+            tauri::async_runtime::spawn(async move {
+                background_cloud_poll(app_handle_for_polling).await;
+            });
 
             Ok(())
         })
@@ -3615,11 +4201,10 @@ fn main() {
         })
         .on_window_event(|event| {
             match event.event() {
-                tauri::WindowEvent::CloseRequested { api, .. } => {
-                    // Hide window instead of closing - minimize to tray
-                    event.window().hide().ok();
-                    api.prevent_close();
-                    println!("[TRAY] Window minimized to system tray");
+                tauri::WindowEvent::CloseRequested { .. } => {
+                    // Let the window close/destroy completely to free RAM
+                    // Don't prevent close - we handle app exit separately in .run()
+                    println!("[TRAY] Window closing/destroying. Backend will keep running.");
                 }
                 tauri::WindowEvent::Focused(focused) => {
                     if *focused {
@@ -3660,10 +4245,10 @@ fn main() {
             // Other commands
             delete_media_files,
             delete_series,
+            delete_series_cloud_folder,
             get_episodes_for_delete,
             get_config,
             save_config,
-            scan_library,
             get_scan_status,
             get_resume_info,
             get_media_info,
@@ -3716,7 +4301,20 @@ fn main() {
             get_cloud_cache_info,
             cleanup_cloud_cache,
             clear_cloud_cache,
+            // Auto-update commands
+            check_for_updates,
+            download_update,
+            install_update,
+            get_app_version,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            // Prevent app from exiting when last window closes
+            // This keeps the backend running so we can recreate the window from tray
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                api.prevent_exit();
+                println!("[TRAY] Exit prevented. App running in background. Click tray to reopen.");
+            }
+        });
 }

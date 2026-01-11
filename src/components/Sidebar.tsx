@@ -1,10 +1,11 @@
 import { cn } from "@/lib/utils"
 import {
-  Play, History, Settings,
-  Globe, Home, RotateCw, Sparkles, HardDrive, Cloud
+  History, Settings,
+  Globe, Home, RotateCw, HardDrive, Cloud
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useState, useEffect } from "react"
+import { isGdriveConnected, getGdriveAccountInfo, DriveAccountInfo } from "@/services/api"
 
 interface SidebarProps {
   className?: string
@@ -12,9 +13,11 @@ interface SidebarProps {
   setView: (view: string) => void
   onOpenSettings: () => void
   onScan: () => void
+  onCloudScan?: () => void
   theme?: 'dark' | 'light'
   toggleTheme?: () => void
   isScanning?: boolean
+  isCloudIndexing?: boolean
   scanProgress?: {
     current: number
     total: number
@@ -42,13 +45,33 @@ export function Sidebar({
   setView,
   onOpenSettings,
   onScan,
+  onCloudScan,
   isScanning = false,
+  isCloudIndexing = false,
   showLocalTab = true,
   showCloudTab = true,
 }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [gdriveConnected, setGdriveConnected] = useState(false);
+  const [gdriveInfo, setGdriveInfo] = useState<DriveAccountInfo | null>(null);
+
+  // Fetch Google Drive info
+  useEffect(() => {
+    const fetchGdriveInfo = async () => {
+      const connected = await isGdriveConnected();
+      setGdriveConnected(connected);
+      if (connected) {
+        const info = await getGdriveAccountInfo();
+        setGdriveInfo(info);
+      }
+    };
+    fetchGdriveInfo();
+    // Refresh every 60 seconds
+    const interval = setInterval(fetchGdriveInfo, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -70,11 +93,11 @@ export function Sidebar({
   }, []);
 
   const allMenuItems = [
-    { id: "home", label: "Home", icon: Home, color: "#8B5CF6" },
-    { id: "local", label: "Local", icon: HardDrive, color: "#EC4899" },
-    { id: "cloud", label: "Google Drive", icon: Cloud, color: "#06B6D4" },
-    { id: "stream", label: "Discover", icon: Globe, color: "#10B981" },
-    { id: "history", label: "History", icon: History, color: "#F59E0B" },
+    { id: "home", label: "Home", icon: Home },
+    { id: "local", label: "Local", icon: HardDrive },
+    { id: "cloud", label: "Google Drive", icon: Cloud },
+    { id: "stream", label: "Discover", icon: Globe },
+    { id: "history", label: "History", icon: History },
   ];
 
   // Filter menu items based on visibility settings
@@ -100,10 +123,10 @@ export function Sidebar({
       {/* Decorative gradient blob */}
       <div className="absolute top-0 left-0 w-full h-48 pointer-events-none overflow-hidden">
         <motion.div
-          className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-primary/20 blur-[80px]"
+          className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-white/10 blur-[80px]"
           animate={{
             scale: [1, 1.1, 1],
-            opacity: [0.2, 0.3, 0.2]
+            opacity: [0.1, 0.15, 0.1]
           }}
           transition={{
             duration: 4,
@@ -118,30 +141,43 @@ export function Sidebar({
         layout
         transition={smoothTransition}
         className={cn(
-          "relative z-10 flex items-center gap-3.5 py-6",
-          isCollapsed ? "justify-center px-0" : "px-5"
+          "relative z-10 flex items-center gap-3 py-5",
+          isCollapsed ? "justify-center px-0" : "px-4"
         )}
       >
         <motion.div
-          whileHover={{ scale: 1.1 }}
+          whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           transition={springConfig}
           className="relative group cursor-pointer"
         >
-          {/* Glow effect */}
+          {/* Animated glow ring */}
           <motion.div
-            className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary to-accent blur-lg"
-            initial={{ opacity: 0.4 }}
-            whileHover={{ opacity: 0.7, scale: 1.2 }}
-            transition={{ duration: 0.3 }}
+            className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-white/40 via-white/20 to-white/40 opacity-0 group-hover:opacity-60 blur-md"
+            animate={{
+              rotate: [0, 360],
+            }}
+            transition={{
+              duration: 8,
+              repeat: Infinity,
+              ease: "linear"
+            }}
           />
 
           {/* Logo container */}
-          <motion.div
-            className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary/90 to-violet-600 shadow-lg border border-white/20"
-          >
-            <Play className="w-4 h-4 text-white fill-white ml-0.5 drop-shadow-lg" />
-          </motion.div>
+          <div className="relative flex items-center justify-center w-11 h-11 rounded-2xl bg-white shadow-xl shadow-white/10 border border-white/20 overflow-hidden">
+            {/* Inner shine effect */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-white/20 via-transparent to-transparent" />
+
+            {/* Play icon with better styling */}
+            <svg
+              viewBox="0 0 24 24"
+              className="w-5 h-5 text-black ml-0.5 relative z-10 drop-shadow-lg"
+              fill="currentColor"
+            >
+              <path d="M8 5.14v14l11-7-11-7z" />
+            </svg>
+          </div>
         </motion.div>
 
         <AnimatePresence mode="wait">
@@ -153,18 +189,10 @@ export function Sidebar({
               transition={{ duration: 0.25, ease: "easeOut" }}
               className="flex flex-col overflow-hidden"
             >
-              <div className="flex items-center gap-1.5">
-                <h1 className="text-base font-bold tracking-wide text-foreground">
-                  Slasshy
-                </h1>
-                <motion.div
-                  animate={{ rotate: [0, 15, -15, 0] }}
-                  transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-primary" />
-                </motion.div>
-              </div>
-              <span className="text-[10px] text-muted-foreground font-medium tracking-wider uppercase">
+              <h1 className="text-lg font-bold text-white tracking-tight">
+                Slasshy
+              </h1>
+              <span className="text-[10px] text-white/60 font-semibold tracking-[0.2em] uppercase -mt-0.5">
                 Media Center
               </span>
             </motion.div>
@@ -227,11 +255,11 @@ export function Sidebar({
                     initial={false}
                     animate={{
                       backgroundColor: isActive
-                        ? `${item.color}20`
+                        ? "rgba(255,255,255,0.15)"
                         : isHovered
                           ? "rgba(255,255,255,0.04)"
                           : "rgba(255,255,255,0)",
-                      borderColor: isActive ? `${item.color}40` : "transparent",
+                      borderColor: isActive ? "rgba(255,255,255,0.3)" : "transparent",
                     }}
                     style={{ borderWidth: 1, borderStyle: "solid" }}
                     transition={{ duration: 0.2 }}
@@ -244,8 +272,8 @@ export function Sidebar({
                     animate={{
                       height: isActive ? (isCollapsed ? 28 : 22) : 0,
                       y: "-50%",
-                      backgroundColor: item.color,
-                      boxShadow: isActive ? `0 0 12px ${item.color}` : "none",
+                      backgroundColor: "#ffffff",
+                      boxShadow: isActive ? "0 0 12px rgba(255,255,255,0.5)" : "none",
                     }}
                     transition={springConfig}
                   />
@@ -263,15 +291,15 @@ export function Sidebar({
                       className="p-1.5 rounded-lg"
                       initial={false}
                       animate={{
-                        backgroundColor: isActive ? item.color : "transparent",
-                        boxShadow: isActive ? `0 4px 12px ${item.color}50` : "none",
+                        backgroundColor: isActive ? "#ffffff" : "transparent",
+                        boxShadow: isActive ? "0 4px 12px rgba(255,255,255,0.3)" : "none",
                       }}
                       transition={{ duration: 0.25 }}
                     >
                       <item.icon
                         className="w-[18px] h-[18px]"
                         style={{
-                          color: isActive ? "white" : (isHovered ? item.color : undefined),
+                          color: isActive ? "#000000" : (isHovered ? "#ffffff" : undefined),
                           transition: "color 0.2s ease"
                         }}
                       />
@@ -304,10 +332,10 @@ export function Sidebar({
                       transition={{ duration: 0.15, ease: "easeOut" }}
                       className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-2 rounded-lg bg-card/95 backdrop-blur-xl border border-white/10 text-xs font-medium text-white shadow-xl whitespace-nowrap z-50"
                       style={{
-                        boxShadow: `0 4px 20px rgba(0,0,0,0.3), 0 0 0 1px ${item.color}20`
+                        boxShadow: "0 4px 20px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1)"
                       }}
                     >
-                      <span style={{ color: item.color }}>{item.label}</span>
+                      <span className="text-white">{item.label}</span>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -328,6 +356,129 @@ export function Sidebar({
           isCollapsed ? "px-2.5" : "px-3"
         )}
       >
+        {/* Google Drive Storage Stats */}
+        {gdriveConnected && gdriveInfo && gdriveInfo.storage_used !== null && gdriveInfo.storage_limit !== null && (
+          <AnimatePresence>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+              className={cn(
+                "mb-3 rounded-xl p-3",
+                "bg-white/5",
+                "border border-white/10"
+              )}
+            >
+              {!isCollapsed ? (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Cloud className="w-4 h-4 text-white/70" />
+                    <span className="text-xs font-medium text-white/70">Google Drive</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <motion.div
+                        className="h-full bg-white rounded-full"
+                        initial={{ width: 0 }}
+                        animate={{
+                          width: `${Math.min((gdriveInfo.storage_used / gdriveInfo.storage_limit) * 100, 100)}%`
+                        }}
+                        transition={{ duration: 0.8, ease: "easeOut" }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] text-muted-foreground">
+                      <span>
+                        {(gdriveInfo.storage_used / (1024 * 1024 * 1024)).toFixed(1)} GB
+                      </span>
+                      <span>
+                        {(gdriveInfo.storage_limit / (1024 * 1024 * 1024)).toFixed(0)} GB
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center gap-1" title={`${(gdriveInfo.storage_used / (1024 * 1024 * 1024)).toFixed(1)} / ${(gdriveInfo.storage_limit / (1024 * 1024 * 1024)).toFixed(0)} GB`}>
+                  <Cloud className="w-4 h-4 text-white/70" />
+                  <div className="w-6 h-6 relative">
+                    <svg className="w-6 h-6 -rotate-90" viewBox="0 0 24 24">
+                      <circle
+                        className="stroke-white/10"
+                        cx="12" cy="12" r="10"
+                        strokeWidth="3"
+                        fill="none"
+                      />
+                      <motion.circle
+                        className="stroke-white"
+                        cx="12" cy="12" r="10"
+                        strokeWidth="3"
+                        fill="none"
+                        strokeLinecap="round"
+                        initial={{ strokeDasharray: "0 62.83" }}
+                        animate={{
+                          strokeDasharray: `${(gdriveInfo.storage_used / gdriveInfo.storage_limit) * 62.83} 62.83`
+                        }}
+                        transition={{ duration: 0.8, ease: "easeOut" }}
+                      />
+                    </svg>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        )}
+
+        {/* Index Cloud Drive Button - Only show if connected */}
+        {gdriveConnected && onCloudScan && (
+          <motion.button
+            onClick={onCloudScan}
+            disabled={isCloudIndexing || isScanning}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            transition={springConfig}
+            className={cn(
+              "relative w-full flex items-center gap-3 py-2.5 rounded-xl text-sm font-semibold overflow-hidden",
+              isCollapsed ? "justify-center px-0" : "px-3",
+              isCloudIndexing
+                ? "bg-white/20 text-white border border-white/30"
+                : "bg-gradient-to-r from-white/[0.06] to-white/[0.03] hover:from-white/10 hover:to-white/[0.05] border border-white/[0.08] text-muted-foreground hover:text-white"
+            )}
+          >
+            {/* Shimmer effect when indexing */}
+            {isCloudIndexing && (
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                animate={{ x: ["-100%", "100%"] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+              />
+            )}
+
+            <motion.div
+              animate={isCloudIndexing ? { rotate: 360 } : { rotate: 0 }}
+              transition={isCloudIndexing ? { duration: 1, repeat: Infinity, ease: "linear" } : {}}
+            >
+              <Cloud className={cn(
+                "w-4 h-4 flex-shrink-0",
+                isCloudIndexing && "text-white"
+              )} />
+            </motion.div>
+
+            <AnimatePresence mode="wait">
+              {!isCollapsed && (
+                <motion.span
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="relative z-10"
+                >
+                  {isCloudIndexing ? "Indexing..." : "Index Drive"}
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </motion.button>
+        )}
+
         {/* Scan Button */}
         <motion.button
           onClick={onScan}
@@ -340,14 +491,14 @@ export function Sidebar({
             "relative w-full flex items-center gap-3 py-2.5 rounded-xl text-sm font-semibold overflow-hidden",
             isCollapsed ? "justify-center px-0" : "px-3",
             isScanning
-              ? "bg-primary/20 text-primary border border-primary/30"
+              ? "bg-white/20 text-white border border-white/30"
               : "bg-gradient-to-r from-white/[0.06] to-white/[0.03] hover:from-white/10 hover:to-white/[0.05] border border-white/[0.08] text-muted-foreground hover:text-white"
           )}
         >
           {/* Shimmer effect when scanning */}
           {isScanning && (
             <motion.div
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/30 to-transparent"
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
               animate={{ x: ["-100%", "100%"] }}
               transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
             />
@@ -359,7 +510,7 @@ export function Sidebar({
           >
             <RotateCw className={cn(
               "w-4 h-4 flex-shrink-0",
-              isScanning && "text-primary"
+              isScanning && "text-white"
             )} />
           </motion.div>
 
@@ -415,7 +566,7 @@ export function Sidebar({
       </motion.div>
 
       {/* Bottom decorative gradient */}
-      <div className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none bg-gradient-to-t from-primary/5 to-transparent" />
+      <div className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none bg-gradient-to-t from-white/5 to-transparent" />
     </motion.aside>
   );
 }

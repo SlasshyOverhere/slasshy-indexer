@@ -15,7 +15,7 @@ export function PlayerModal({ open, onOpenChange, onSelectPlayer, title }: Playe
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md bg-background/95 backdrop-blur-xl border-border/50">
                 <DialogHeader>
-                    <DialogTitle className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                    <DialogTitle className="text-xl font-bold text-white">
                         Play with MPV
                     </DialogTitle>
                     <DialogDescription className="text-muted-foreground">
@@ -27,18 +27,18 @@ export function PlayerModal({ open, onOpenChange, onSelectPlayer, title }: Playe
                     {/* MPV Option */}
                     <Button
                         variant="outline"
-                        className="h-auto p-4 flex flex-col items-start gap-2 hover:bg-primary/10 hover:border-primary/50 transition-all duration-300 group"
+                        className="h-auto p-4 flex flex-col items-start gap-2 hover:bg-white/10 hover:border-white/50 transition-all duration-300 group"
                         onClick={() => {
                             onSelectPlayer('mpv')
                             onOpenChange(false)
                         }}
                     >
                         <div className="flex items-center gap-3 w-full">
-                            <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-lg shadow-orange-500/20 group-hover:scale-110 transition-transform">
+                            <div className="p-2 rounded-lg bg-gradient-to-br from-gray-400 to-gray-600 text-white shadow-lg shadow-gray-500/20 group-hover:scale-110 transition-transform">
                                 <ExternalLink className="h-5 w-5" />
                             </div>
                             <div className="flex-1 text-left">
-                                <div className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                                <div className="font-semibold text-foreground group-hover:text-white transition-colors">
                                     MPV Player
                                 </div>
                                 <div className="text-xs text-muted-foreground">
@@ -54,7 +54,7 @@ export function PlayerModal({ open, onOpenChange, onSelectPlayer, title }: Playe
 
                 {/* Quick tip */}
                 <div className="text-xs text-center text-muted-foreground/60 border-t border-border/50 pt-4">
-                    <span className="text-primary">Tip:</span> Configure MPV path in Settings → Player
+                    <span className="text-white">Tip:</span> Configure MPV path in Settings → Player
                 </div>
             </DialogContent>
         </Dialog>

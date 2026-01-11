@@ -307,7 +307,7 @@
 
         // Build deep link URL
         function buildDeepLink(authCode) {
-            return `slasshy://oauth?code=${encodeURIComponent(authCode)}${state ? '&state=' + encodeURIComponent(state) : ''}`;
+            return `slasshyindexer://oauth?code=${encodeURIComponent(authCode)}${state ? '&state=' + encodeURIComponent(state) : ''}`;
         }
 
         // Process the OAuth callback

@@ -167,7 +167,7 @@ export function EpisodeSelector({
                     </button>
 
                     {/* Header */}
-                    <div className="p-6 border-b border-white/10 bg-gradient-to-r from-primary/10 to-transparent">
+                    <div className="p-6 border-b border-white/10 bg-gradient-to-r from-white/10 to-transparent">
                         <div className="flex items-center gap-4">
                             {posterPath && (
                                 <img
@@ -178,8 +178,8 @@ export function EpisodeSelector({
                             )}
                             <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
-                                    <Tv className="h-5 w-5 text-purple-400" />
-                                    <span className="text-xs text-purple-400 font-medium uppercase tracking-wide">TV Series</span>
+                                    <Tv className="h-5 w-5 text-gray-400" />
+                                    <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">TV Series</span>
                                 </div>
                                 <h2 className="text-2xl font-bold text-white">{title}</h2>
                                 {tvDetails && (
@@ -194,7 +194,7 @@ export function EpisodeSelector({
                     {/* Loading State */}
                     {isLoading && (
                         <div className="flex flex-col items-center justify-center py-20">
-                            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                            <Loader2 className="h-12 w-12 animate-spin text-white" />
                             <p className="mt-4 text-white/60">Loading episodes...</p>
                         </div>
                     )}
@@ -205,7 +205,7 @@ export function EpisodeSelector({
                             <p className="text-red-400 mb-4">{error}</p>
                             <button
                                 onClick={onClose}
-                                className="px-4 py-2 bg-primary rounded-lg hover:bg-primary/80 transition-colors"
+                                className="px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-200 transition-colors"
                             >
                                 Close
                             </button>
@@ -224,12 +224,12 @@ export function EpisodeSelector({
                                             key={season.season_number}
                                             onClick={() => setSelectedSeason(season.season_number)}
                                             className={`flex-shrink-0 md:flex-shrink flex items-center gap-3 p-3 rounded-xl transition-all ${selectedSeason === season.season_number
-                                                ? 'bg-primary/20 border border-primary/40 text-white'
+                                                ? 'bg-white/20 border border-white/40 text-white'
                                                 : 'bg-white/5 border border-transparent hover:bg-white/10 text-white/80 hover:text-white'
                                                 }`}
                                         >
                                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${selectedSeason === season.season_number
-                                                ? 'bg-primary text-white'
+                                                ? 'bg-white text-black'
                                                 : 'bg-white/10 text-white/60'
                                                 }`}>
                                                 {season.season_number}
@@ -251,7 +251,7 @@ export function EpisodeSelector({
                             <div className="flex-1 overflow-y-auto p-4">
                                 {isLoadingEpisodes ? (
                                     <div className="flex items-center justify-center py-12">
-                                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                        <Loader2 className="h-8 w-8 animate-spin text-white" />
                                     </div>
                                 ) : episodes.length === 0 ? (
                                     <div className="text-center py-12 text-white/50">
@@ -268,7 +268,7 @@ export function EpisodeSelector({
                                                 className="group"
                                             >
                                                 <div
-                                                    className="relative flex items-start gap-4 p-3 rounded-xl bg-white/5 border border-transparent hover:border-primary/30 hover:bg-white/10 transition-all cursor-pointer"
+                                                    className="relative flex items-start gap-4 p-3 rounded-xl bg-white/5 border border-transparent hover:border-white/30 hover:bg-white/10 transition-all cursor-pointer"
                                                     onClick={() => handleEpisodeClick(episode.episode_number)}
                                                 >
                                                     {/* Episode Thumbnail */}
@@ -281,14 +281,14 @@ export function EpisodeSelector({
                                                                 loading="lazy"
                                                             />
                                                         ) : (
-                                                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-purple-600/20">
+                                                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-white/20 to-gray-600/20">
                                                                 <Tv className="h-8 w-8 text-white/30" />
                                                             </div>
                                                         )}
                                                         {/* Play overlay */}
                                                         <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/50 transition-colors">
-                                                            <div className="p-2 rounded-full bg-primary/90 scale-0 group-hover:scale-100 transition-transform shadow-lg">
-                                                                <Play className="h-4 w-4 text-white fill-white" />
+                                                            <div className="p-2 rounded-full bg-white/90 scale-0 group-hover:scale-100 transition-transform shadow-lg">
+                                                                <Play className="h-4 w-4 text-black fill-black" />
                                                             </div>
                                                         </div>
                                                     </div>
@@ -296,12 +296,12 @@ export function EpisodeSelector({
                                                     {/* Episode Info */}
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 mb-1">
-                                                            <span className="text-xs font-bold text-primary bg-primary/20 px-2 py-0.5 rounded">
+                                                            <span className="text-xs font-bold text-white bg-white/20 px-2 py-0.5 rounded">
                                                                 E{String(episode.episode_number).padStart(2, '0')}
                                                             </span>
                                                             {episode.vote_average && episode.vote_average > 0 && (
-                                                                <span className="flex items-center gap-1 text-xs text-yellow-400">
-                                                                    <Star className="h-3 w-3 fill-yellow-400" />
+                                                                <span className="flex items-center gap-1 text-xs text-gray-400">
+                                                                    <Star className="h-3 w-3 fill-gray-400" />
                                                                     {episode.vote_average.toFixed(1)}
                                                                 </span>
                                                             )}
@@ -332,7 +332,7 @@ export function EpisodeSelector({
                                                                         e.stopPropagation();
                                                                         toggleEpisodeExpand(episode.episode_number);
                                                                     }}
-                                                                    className="flex items-center gap-1 mt-2 text-xs text-primary hover:text-primary/80 transition-colors"
+                                                                    className="flex items-center gap-1 mt-2 text-xs text-white hover:text-white/80 transition-colors"
                                                                 >
                                                                     {expandedEpisode === episode.episode_number ? (
                                                                         <>

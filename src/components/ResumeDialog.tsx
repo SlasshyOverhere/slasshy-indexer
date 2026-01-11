@@ -101,20 +101,20 @@ export function ResumeDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-lg bg-[#0c0a1a]/95 backdrop-blur-2xl border border-white/10 shadow-[0_0_80px_rgba(139,92,246,0.15)] rounded-2xl overflow-hidden">
+            <DialogContent className="sm:max-w-lg bg-[#0c0a1a]/95 backdrop-blur-2xl border border-white/10 shadow-[0_0_80px_rgba(255,255,255,0.1)] rounded-2xl overflow-hidden">
                 {/* Background glow effects */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-violet-500/20 rounded-full blur-[80px]" />
-                    <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-cyan-500/10 rounded-full blur-[80px]" />
+                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gray-500/20 rounded-full blur-[80px]" />
+                    <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-gray-500/10 rounded-full blur-[80px]" />
                 </div>
 
                 <DialogHeader className="space-y-4 relative z-10">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500/20 to-purple-500/20 border border-violet-500/30">
+                        <div className="p-2.5 rounded-xl bg-gradient-to-br from-gray-500/20 to-gray-500/20 border border-gray-500/30">
                             {mediaType === 'movie' ? (
-                                <Film className="h-5 w-5 text-violet-400" />
+                                <Film className="h-5 w-5 text-gray-400" />
                             ) : (
-                                <Tv2 className="h-5 w-5 text-violet-400" />
+                                <Tv2 className="h-5 w-5 text-gray-400" />
                             )}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -122,7 +122,7 @@ export function ResumeDialog({
                                 {title}
                             </DialogTitle>
                             {seasonEpisode && (
-                                <span className="text-sm font-medium text-violet-400">
+                                <span className="text-sm font-medium text-gray-400">
                                     {seasonEpisode}
                                 </span>
                             )}
@@ -148,8 +148,8 @@ export function ResumeDialog({
                                 <div className="relative z-10 space-y-5">
                                     {/* Time info */}
                                     <div className="flex items-center justify-center gap-3">
-                                        <div className="p-2 rounded-lg bg-violet-500/20">
-                                            <Clock className="h-4 w-4 text-violet-400" />
+                                        <div className="p-2 rounded-lg bg-gray-500/20">
+                                            <Clock className="h-4 w-4 text-gray-400" />
                                         </div>
                                         <div className="flex items-baseline gap-2">
                                             <span className="text-2xl font-bold text-white">
@@ -168,10 +168,10 @@ export function ResumeDialog({
                                             initial={{ width: 0 }}
                                             animate={{ width: `${Math.min(progressPercent, 100)}%` }}
                                             transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
-                                            className="absolute inset-y-0 left-0 bg-gradient-to-r from-violet-500 via-purple-500 to-cyan-400 rounded-full"
+                                            className="absolute inset-y-0 left-0 bg-gradient-to-r from-gray-500 via-gray-400 to-gray-300 rounded-full"
                                         >
                                             {/* Glow effect */}
-                                            <div className="absolute inset-0 bg-gradient-to-r from-violet-500 via-purple-500 to-cyan-400 blur-sm opacity-60" />
+                                            <div className="absolute inset-0 bg-gradient-to-r from-gray-500 via-gray-400 to-gray-300 blur-sm opacity-60" />
                                             {/* Shine */}
                                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
                                         </motion.div>
@@ -180,14 +180,14 @@ export function ResumeDialog({
                                             initial={{ left: 0 }}
                                             animate={{ left: `${Math.min(progressPercent, 100)}%` }}
                                             transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
-                                            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-white shadow-lg shadow-violet-500/50"
+                                            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-white shadow-lg shadow-gray-500/50"
                                         />
                                     </div>
 
                                     {/* Stats */}
                                     <div className="flex justify-between text-sm">
                                         <span className="text-white/50 flex items-center gap-1.5">
-                                            <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                                            <Sparkles className="w-3.5 h-3.5 text-gray-400" />
                                             {progressPercent.toFixed(0)}% watched
                                         </span>
                                         <span className="text-white/50">
@@ -211,8 +211,8 @@ export function ResumeDialog({
                                     />
                                 )}
                                 <div className="relative z-10 flex flex-col items-center gap-4">
-                                    <div className="p-4 rounded-2xl bg-gradient-to-br from-violet-500/20 to-purple-500/20 border border-violet-500/30 shadow-lg shadow-violet-500/20">
-                                        <Play className="h-8 w-8 text-violet-400 fill-violet-400" />
+                                    <div className="p-4 rounded-2xl bg-gradient-to-br from-gray-500/20 to-gray-500/20 border border-gray-500/30 shadow-lg shadow-gray-500/20">
+                                        <Play className="h-8 w-8 text-gray-400 fill-gray-400" />
                                     </div>
                                     <p className="text-center text-white font-medium text-lg">
                                         You've watched this before
@@ -248,7 +248,7 @@ export function ResumeDialog({
                     </Button>
                     <Button
                         onClick={handleResume}
-                        className="w-full sm:w-auto gap-2 bg-gradient-to-r from-violet-600 via-purple-600 to-violet-600 hover:from-violet-500 hover:via-purple-500 hover:to-violet-500 text-white font-semibold rounded-xl py-5 shadow-lg shadow-violet-500/30 transition-all duration-300 hover:shadow-violet-500/50"
+                        className="w-full sm:w-auto gap-2 bg-gradient-to-r from-white via-gray-200 to-white hover:from-gray-100 hover:via-white hover:to-gray-100 text-black font-semibold rounded-xl py-5 shadow-lg shadow-white/20 transition-all duration-300 hover:shadow-white/30"
                     >
                         <Play className="h-4 w-4 fill-current" />
                         {hasProgressData && !isStreaming ? `Resume at ${formatTime(currentPosition)}` : 'Continue Watching'}
