@@ -1217,7 +1217,8 @@ async fn check_cloud_changes(
         // Send Windows notification for each item (simple format)
         for title in &titles {
             if let Err(e) = Notification::new()
-                .summary(&format!("{} added to your library", title))
+                .summary("StreamVault")
+                .body(&format!("{} added to your library", title))
                 .appname("StreamVault")
                 .timeout(notify_rust::Timeout::Milliseconds(3000))
                 .show()
@@ -3388,25 +3389,13 @@ async fn background_cloud_poll(app_handle: AppHandle) {
 
         // Check if authenticated
         if !state.gdrive_client.is_authenticated() {
-            // Not connected - wait and retry
+            // Not connected - wait and retry (silent, don't spam logs)
             tokio::time::sleep(Duration::from_secs(5)).await;
             continue;
         }
 
-        // Check if we have folders to monitor
-        let has_folders = {
-            if let Ok(db) = state.db.lock() {
-                db.get_cloud_folders().map(|f| !f.is_empty()).unwrap_or(false)
-            } else {
-                false
-            }
-        };
-
-        if !has_folders {
-            // No folders - wait and retry
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            continue;
-        }
+        // Cloud-only mode: No folder check needed - we monitor entire Drive
+        println!("[CLOUD BG] Polling for changes...");
 
         // Perform the actual check
         match background_check_cloud_changes(&app_handle).await {
@@ -3419,6 +3408,8 @@ async fn background_cloud_poll(app_handle: AppHandle) {
                     if let Some(window) = app_handle.get_window("main") {
                         window.emit("library-updated", ()).ok();
                     }
+                } else {
+                    println!("[CLOUD BG] No new files detected");
                 }
             }
             Err(e) => {
@@ -3641,7 +3632,8 @@ async fn background_check_cloud_changes(app_handle: &AppHandle) -> Result<CloudI
 
         for title in &titles {
             Notification::new()
-                .summary(&format!("{} added to your library", title))
+                .summary("StreamVault")
+                .body(&format!("{} added to your library", title))
                 .appname("StreamVault")
                 .timeout(notify_rust::Timeout::Milliseconds(3000))
                 .show()

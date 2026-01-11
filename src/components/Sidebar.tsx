@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils"
 import {
   History, Settings,
-  Globe, Home, RotateCw, HardDrive, Cloud
+  Globe, Home, RotateCw, Cloud
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useState, useEffect } from "react"
@@ -12,7 +12,6 @@ interface SidebarProps {
   currentView: string
   setView: (view: string) => void
   onOpenSettings: () => void
-  onScan: () => void
   onCloudScan?: () => void
   theme?: 'dark' | 'light'
   toggleTheme?: () => void
@@ -22,7 +21,6 @@ interface SidebarProps {
     current: number
     total: number
   } | null
-  showLocalTab?: boolean
   showCloudTab?: boolean
 }
 
@@ -44,11 +42,9 @@ export function Sidebar({
   currentView,
   setView,
   onOpenSettings,
-  onScan,
   onCloudScan,
   isScanning = false,
   isCloudIndexing = false,
-  showLocalTab = true,
   showCloudTab = true,
 }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -94,7 +90,6 @@ export function Sidebar({
 
   const allMenuItems = [
     { id: "home", label: "Home", icon: Home },
-    { id: "local", label: "Local", icon: HardDrive },
     { id: "cloud", label: "Google Drive", icon: Cloud },
     { id: "stream", label: "Discover", icon: Globe },
     { id: "history", label: "History", icon: History },
@@ -102,7 +97,6 @@ export function Sidebar({
 
   // Filter menu items based on visibility settings
   const menuItems = allMenuItems.filter(item => {
-    if (item.id === 'local' && !showLocalTab) return false;
     if (item.id === 'cloud' && !showCloudTab) return false;
     return true;
   });
@@ -428,7 +422,7 @@ export function Sidebar({
           </AnimatePresence>
         )}
 
-        {/* Index Cloud Drive Button - Only show if connected */}
+        {/* Update Library Button - Only show if connected to Google Drive */}
         {gdriveConnected && onCloudScan && (
           <motion.button
             onClick={onCloudScan}
@@ -436,6 +430,7 @@ export function Sidebar({
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             transition={springConfig}
+            data-tour="scan-library-btn"
             className={cn(
               "relative w-full flex items-center gap-3 py-2.5 rounded-xl text-sm font-semibold overflow-hidden",
               isCollapsed ? "justify-center px-0" : "px-3",
@@ -457,7 +452,7 @@ export function Sidebar({
               animate={isCloudIndexing ? { rotate: 360 } : { rotate: 0 }}
               transition={isCloudIndexing ? { duration: 1, repeat: Infinity, ease: "linear" } : {}}
             >
-              <Cloud className={cn(
+              <RotateCw className={cn(
                 "w-4 h-4 flex-shrink-0",
                 isCloudIndexing && "text-white"
               )} />
@@ -472,62 +467,12 @@ export function Sidebar({
                   transition={{ duration: 0.15 }}
                   className="relative z-10"
                 >
-                  {isCloudIndexing ? "Indexing..." : "Index Drive"}
+                  {isCloudIndexing ? "Updating..." : "Update Library"}
                 </motion.span>
               )}
             </AnimatePresence>
           </motion.button>
         )}
-
-        {/* Scan Button */}
-        <motion.button
-          onClick={onScan}
-          disabled={isScanning}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          transition={springConfig}
-          data-tour="scan-library-btn"
-          className={cn(
-            "relative w-full flex items-center gap-3 py-2.5 rounded-xl text-sm font-semibold overflow-hidden",
-            isCollapsed ? "justify-center px-0" : "px-3",
-            isScanning
-              ? "bg-white/20 text-white border border-white/30"
-              : "bg-gradient-to-r from-white/[0.06] to-white/[0.03] hover:from-white/10 hover:to-white/[0.05] border border-white/[0.08] text-muted-foreground hover:text-white"
-          )}
-        >
-          {/* Shimmer effect when scanning */}
-          {isScanning && (
-            <motion.div
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-              animate={{ x: ["-100%", "100%"] }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-            />
-          )}
-
-          <motion.div
-            animate={isScanning ? { rotate: 360 } : { rotate: 0 }}
-            transition={isScanning ? { duration: 1, repeat: Infinity, ease: "linear" } : {}}
-          >
-            <RotateCw className={cn(
-              "w-4 h-4 flex-shrink-0",
-              isScanning && "text-white"
-            )} />
-          </motion.div>
-
-          <AnimatePresence mode="wait">
-            {!isCollapsed && (
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="relative z-10"
-              >
-                {isScanning ? "Scanning..." : "Update Library"}
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </motion.button>
 
         {/* Settings Button */}
         <motion.button

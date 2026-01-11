@@ -442,22 +442,6 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                         </div>
                       </div>
 
-                      {/* Local Tab Toggle */}
-                      <div className="flex items-center justify-between pl-12">
-                        <div className="flex items-center gap-2">
-                          <HardDrive className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm font-medium">Local Library</span>
-                        </div>
-                        <Switch
-                          checked={tabVisibility?.showLocal ?? true}
-                          onCheckedChange={(checked) => {
-                            if (onTabVisibilityChange && tabVisibility) {
-                              onTabVisibilityChange({ ...tabVisibility, showLocal: checked })
-                            }
-                          }}
-                        />
-                      </div>
-
                       {/* Cloud Tab Toggle */}
                       <div className="flex items-center justify-between pl-12">
                         <div className="flex items-center gap-2">

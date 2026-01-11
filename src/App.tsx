@@ -39,7 +39,7 @@ import { initAdBlocker } from '@/utils/adBlocker'
 import {
   Search, Loader2, Trash2, Play, Film, Tv, Clock,
   ChevronRight, LayoutGrid, List,
-  TrendingUp, BarChart3, Calendar, Sparkles, PlayCircle, Globe, X, Cloud, HardDrive, RefreshCw
+  TrendingUp, BarChart3, Calendar, Sparkles, PlayCircle, Globe, X, Cloud, RefreshCw
 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -76,8 +76,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedShow, setSelectedShow] = useState<MediaItem | null>(null)
 
-  // Sub-tabs for Local and Cloud views
-  const [localSubTab, setLocalSubTab] = useState<MediaSubTab>('movies')
+  // Sub-tabs for Cloud view
   const [cloudSubTab, setCloudSubTab] = useState<MediaSubTab>('movies')
 
   // View mode and sort
@@ -152,8 +151,8 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [showMainAppTour, setShowMainAppTour] = useState(false)
 
-  // Tab visibility state
-  const [tabVisibility, setTabVisibilityState] = useState<TabVisibility>({ showLocal: true, showCloud: true })
+  // Tab visibility state - cloud-only mode
+  const [tabVisibility, setTabVisibilityState] = useState<TabVisibility>({ showLocal: false, showCloud: true })
 
   // Cloud connection state for contextual empty states
   const [isGDriveConnected, setIsGDriveConnected] = useState(false)
@@ -222,10 +221,8 @@ function App() {
   const handleTabVisibilityChange = (visibility: TabVisibility) => {
     setTabVisibility(visibility)
     setTabVisibilityState(visibility)
-    // If user hides the current view, navigate to home
-    if (view === 'local' && !visibility.showLocal) {
-      setView('home')
-    } else if (view === 'cloud' && !visibility.showCloud) {
+    // If user hides the cloud view, navigate to home
+    if (view === 'cloud' && !visibility.showCloud) {
       setView('home')
     }
   }
@@ -259,7 +256,7 @@ function App() {
         setIsScanning(false)
         setScanProgress(null)
         // Refresh based on current view
-        if (view === 'local' || view === 'cloud') {
+        if (view === 'cloud') {
           await fetchData()
         } else if (view === 'history') {
           setItems(await getWatchHistory())
@@ -282,7 +279,7 @@ function App() {
         }
 
         // Refresh based on current view - don't clear items for views that don't need refresh
-        if (view === 'local' || view === 'cloud') {
+        if (view === 'cloud') {
           await fetchData()
         } else if (view === 'history') {
           setItems(await getWatchHistory())
@@ -301,7 +298,7 @@ function App() {
         setIsCloudIndexing(false)
 
         // Refresh based on current view
-        if (view === 'local' || view === 'cloud') {
+        if (view === 'cloud') {
           await fetchData()
         } else if (view === 'history') {
           setItems(await getWatchHistory())
@@ -347,44 +344,17 @@ function App() {
   // The backend polls every 60 seconds and emits 'library-updated' events
   // which are already handled elsewhere in the app
 
-  // Load library stats - based on which tabs are visible
-  // If local is visible, show local stats. If only cloud, show cloud stats. If both, show combined.
+  // Load library stats - cloud only
   const loadLibraryStats = async () => {
     try {
-      let movies = 0
-      let shows = 0
-
-      if (tabVisibility.showLocal && tabVisibility.showCloud) {
-        // Both visible - show combined stats
-        const [localMovies, localShows, cloudMovies, cloudShows] = await Promise.all([
-          getLibraryFiltered('movie', '', false),
-          getLibraryFiltered('tv', '', false),
-          getLibraryFiltered('movie', '', true),
-          getLibraryFiltered('tv', '', true)
-        ])
-        movies = localMovies.length + cloudMovies.length
-        shows = localShows.length + cloudShows.length
-      } else if (tabVisibility.showLocal) {
-        // Only local visible
-        const [localMovies, localShows] = await Promise.all([
-          getLibraryFiltered('movie', '', false),
-          getLibraryFiltered('tv', '', false)
-        ])
-        movies = localMovies.length
-        shows = localShows.length
-      } else if (tabVisibility.showCloud) {
-        // Only cloud visible
-        const [cloudMovies, cloudShows] = await Promise.all([
-          getLibraryFiltered('movie', '', true),
-          getLibraryFiltered('tv', '', true)
-        ])
-        movies = cloudMovies.length
-        shows = cloudShows.length
-      }
+      const [cloudMovies, cloudShows] = await Promise.all([
+        getLibraryFiltered('movie', '', true),
+        getLibraryFiltered('tv', '', true)
+      ])
 
       setLibraryStats({
-        movies,
-        shows,
+        movies: cloudMovies.length,
+        shows: cloudShows.length,
         episodes: 0
       })
     } catch (error) {
@@ -418,7 +388,7 @@ function App() {
       }, 300)
       return () => clearTimeout(delayDebounceFn)
     }
-  }, [view, searchQuery, sortBy, localSubTab, cloudSubTab])
+  }, [view, searchQuery, sortBy, cloudSubTab])
 
   useEffect(() => {
     if (view !== 'home') return
@@ -472,11 +442,7 @@ function App() {
   const fetchData = async () => {
     try {
       let data: MediaItem[] = []
-      if (view === 'local') {
-        // Local view - filter by is_cloud = false
-        const mediaType = localSubTab === 'movies' ? 'movie' : 'tv'
-        data = await getLibraryFiltered(mediaType, searchQuery, false)
-      } else if (view === 'cloud') {
+      if (view === 'cloud') {
         // Cloud view - filter by is_cloud = true
         const mediaType = cloudSubTab === 'movies' ? 'movie' : 'tv'
         data = await getLibraryFiltered(mediaType, searchQuery, true)
@@ -501,83 +467,10 @@ function App() {
     }
   }
 
-  const handleScan = async () => {
-    if (isScanning || isCloudIndexing) {
-      toast({ title: "Scan In Progress", description: "A scan is already running." })
-      return
-    }
-
-    try {
-      setIsScanning(true)
-
-      // Cloud-only: Check for new files using Changes API
-      try {
-        const { isGDriveConnected: checkConnected, checkCloudChanges, getCloudFolders } = await import('@/services/gdrive')
-        const connected = await checkConnected()
-        if (connected) {
-          const folders = await getCloudFolders()
-          if (folders.length > 0) {
-            setIsCloudIndexing(true)
-            setCloudIndexingStatus('Checking for new cloud files...')
-
-            // Use Changes API for efficient incremental update
-            const result = await checkCloudChanges()
-
-            if (result.indexed_count > 0) {
-              toast({
-                title: "Cloud Media Found",
-                description: `Indexed ${result.indexed_count} new cloud files (${result.movies_count} movies, ${result.tv_count} TV shows)`
-              })
-              // Refresh the view and stats
-              await fetchData()
-              await loadLibraryStats()
-            } else {
-              toast({
-                title: "Cloud Library Up to Date",
-                description: "No new files found in your cloud folders"
-              })
-            }
-
-            // Keep the success state visible briefly
-            setTimeout(() => {
-              setIsCloudIndexing(false)
-              setCloudIndexingStatus('')
-              setCloudIndexingProgress(null)
-            }, 2500)
-          } else {
-            toast({
-              title: "No Cloud Folders",
-              description: "Add cloud folders in Settings to start indexing"
-            })
-          }
-        } else {
-          toast({
-            title: "Not Connected",
-            description: "Connect to Google Drive in Settings to index cloud files"
-          })
-        }
-      } catch (cloudError) {
-        console.log('[Scan] Cloud scan failed:', cloudError)
-        setIsCloudIndexing(false)
-        setCloudIndexingStatus('')
-        setCloudIndexingProgress(null)
-        toast({ title: "Error", description: "Failed to check cloud files", variant: "destructive" })
-      }
-
-      setIsScanning(false)
-    } catch (error) {
-      setIsScanning(false)
-      setIsCloudIndexing(false)
-      setCloudIndexingStatus('')
-      setCloudIndexingProgress(null)
-      toast({ title: "Error", description: "Failed to start scan", variant: "destructive" })
-    }
-  }
-
-  // Handle cloud-only indexing - scans the entire Google Drive
+  // Handle cloud-only indexing - scans the entire Google Drive for NEW files only
   const handleCloudScan = async () => {
     if (isScanning || isCloudIndexing) {
-      toast({ title: "Scan In Progress", description: "A scan is already running." })
+      toast({ title: "Update In Progress", description: "Library update is already running." })
       return
     }
 
@@ -594,29 +487,25 @@ function App() {
       }
 
       setIsCloudIndexing(true)
-      setCloudIndexingStatus('Scanning your entire Google Drive...')
-
-      toast({
-        title: "Indexing Started",
-        description: "Scanning your entire Google Drive for movies and TV shows..."
-      })
+      setCloudIndexingStatus('Checking for new files...')
 
       // Scan the root folder which will recursively scan all subfolders
+      // The backend automatically skips files that are already indexed
       const result = await scanCloudFolder('root', 'My Drive')
 
       if (result.indexed_count > 0) {
-        setCloudIndexingStatus(`✓ Indexed ${result.indexed_count} files!`)
+        setCloudIndexingStatus(`✓ Added ${result.indexed_count} new files!`)
         toast({
-          title: "Indexing Complete",
-          description: `Found ${result.movies_count} movies and ${result.tv_count} TV shows`
+          title: "Library Updated",
+          description: `Added ${result.movies_count} movies and ${result.tv_count} TV shows`
         })
         // Refresh the view and stats
         await fetchData()
         await loadLibraryStats()
       } else {
-        setCloudIndexingStatus('✓ No new media found')
+        setCloudIndexingStatus('✓ Library is up to date')
         toast({
-          title: "Indexing Complete",
+          title: "Library Up to Date",
           description: "No new movies or TV shows found in your Drive"
         })
       }
@@ -634,8 +523,8 @@ function App() {
       setCloudIndexingStatus('')
       setCloudIndexingProgress(null)
       toast({
-        title: "Indexing Failed",
-        description: String(error) || "Failed to scan Google Drive",
+        title: "Update Failed",
+        description: String(error) || "Failed to update library",
         variant: "destructive"
       })
     }
@@ -841,7 +730,7 @@ function App() {
       </div>
 
       <Sidebar
-        currentView={view === 'episodes' ? 'local' : view}
+        currentView={view === 'episodes' ? 'cloud' : view}
         setView={(v) => {
           setView(v)
           setSelectedShow(null)
@@ -850,14 +739,12 @@ function App() {
           setHomeSearchResults([])
         }}
         onOpenSettings={() => setSettingsOpen(true)}
-        onScan={handleScan}
         onCloudScan={handleCloudScan}
         theme={theme}
         toggleTheme={toggleTheme}
         isScanning={isScanning}
         isCloudIndexing={isCloudIndexing}
         scanProgress={scanProgress}
-        showLocalTab={tabVisibility.showLocal}
         showCloudTab={tabVisibility.showCloud}
         className="flex-shrink-0 z-50 sticky top-0"
       />
@@ -927,9 +814,9 @@ function App() {
           )}
         </AnimatePresence>
 
-        {/* Floating Controls for Local/Cloud Views */}
+        {/* Floating Controls for Cloud View */}
         <AnimatePresence>
-          {(view === 'local' || view === 'cloud') && (
+          {view === 'cloud' && (
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -940,10 +827,10 @@ function App() {
               {/* Sub-tabs for Movies/TV */}
               <div className="flex p-1 rounded-full bg-card/90 backdrop-blur-xl border border-white/10 shadow-lg">
                 <motion.button
-                  onClick={() => view === 'local' ? setLocalSubTab('movies') : setCloudSubTab('movies')}
+                  onClick={() => setCloudSubTab('movies')}
                   whileTap={{ scale: 0.95 }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
-                    (view === 'local' ? localSubTab : cloudSubTab) === 'movies'
+                    cloudSubTab === 'movies'
                       ? 'bg-white text-black shadow-lg'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
@@ -952,10 +839,10 @@ function App() {
                   <span>Movies</span>
                 </motion.button>
                 <motion.button
-                  onClick={() => view === 'local' ? setLocalSubTab('tv') : setCloudSubTab('tv')}
+                  onClick={() => setCloudSubTab('tv')}
                   whileTap={{ scale: 0.95 }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
-                    (view === 'local' ? localSubTab : cloudSubTab) === 'tv'
+                    cloudSubTab === 'tv'
                       ? 'bg-white text-black shadow-lg'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
@@ -974,7 +861,7 @@ function App() {
                   <Search className="w-4 h-4 text-muted-foreground ml-3" />
                   <input
                     type="text"
-                    placeholder={`Search ${(view === 'local' ? localSubTab : cloudSubTab) === 'movies' ? 'movies' : 'TV shows'}...`}
+                    placeholder={`Search ${cloudSubTab === 'movies' ? 'movies' : 'TV shows'}...`}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-40 md:w-52 bg-transparent border-none text-sm px-3 py-2.5 focus:outline-none text-white placeholder:text-muted-foreground/60 font-medium"
@@ -1090,14 +977,9 @@ function App() {
                 <EpisodeBrowser
                   show={selectedShow}
                   onBack={() => {
-                    // Navigate back to the correct view based on whether the show is from cloud or local
-                    if (selectedShow.is_cloud) {
-                      setView('cloud')
-                      setCloudSubTab('tv')
-                    } else {
-                      setView('local')
-                      setLocalSubTab('tv')
-                    }
+                    // Navigate back to cloud view (all shows are cloud-based now)
+                    setView('cloud')
+                    setCloudSubTab('tv')
                     setSelectedShow(null)
                   }}
                 />
@@ -1195,15 +1077,6 @@ function App() {
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.4 }}
                       >
-                        {tabVisibility.showLocal && (
-                          <button
-                            onClick={() => setView('local')}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-semibold transition-all hover:scale-105"
-                          >
-                            <HardDrive className="w-3.5 h-3.5 text-gray-400" />
-                            <span>Local</span>
-                          </button>
-                        )}
                         {tabVisibility.showCloud && (
                           <button
                             onClick={() => setView('cloud')}
@@ -1289,8 +1162,8 @@ function App() {
                     </motion.section>
                   )}
 
-                  {/* Library Stats - only show if at least one library tab is visible */}
-                  {!homeSearchQuery && (tabVisibility.showLocal || tabVisibility.showCloud) && (
+                  {/* Library Stats - show cloud library stats */}
+                  {!homeSearchQuery && tabVisibility.showCloud && (
                     <motion.section
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -1311,12 +1184,7 @@ function App() {
                         {/* Movies Card */}
                         <motion.div
                           onClick={() => {
-                            // Navigate based on which tabs are visible
-                            if (tabVisibility.showLocal) {
-                              setView('local'); setLocalSubTab('movies');
-                            } else if (tabVisibility.showCloud) {
-                              setView('cloud'); setCloudSubTab('movies');
-                            }
+                            setView('cloud'); setCloudSubTab('movies');
                           }}
                           className="stat-card-enhanced group"
                           style={{ '--stat-color': 'hsl(0 0% 70%)' } as React.CSSProperties}
@@ -1339,12 +1207,7 @@ function App() {
                         {/* TV Shows Card */}
                         <motion.div
                           onClick={() => {
-                            // Navigate based on which tabs are visible
-                            if (tabVisibility.showLocal) {
-                              setView('local'); setLocalSubTab('tv');
-                            } else if (tabVisibility.showCloud) {
-                              setView('cloud'); setCloudSubTab('tv');
-                            }
+                            setView('cloud'); setCloudSubTab('tv');
                           }}
                           className="stat-card-enhanced group"
                           style={{ '--stat-color': 'hsl(0 0% 60%)' } as React.CSSProperties}
@@ -1763,10 +1626,10 @@ function App() {
                 </motion.div>
               )}
 
-              {/* Local/Cloud Media Grid */}
-              {(view === 'local' || view === 'cloud') && (
+              {/* Cloud Media Grid */}
+              {view === 'cloud' && (
                 <motion.div
-                  key={`${view}-${view === 'local' ? localSubTab : cloudSubTab}`}
+                  key={`cloud-${cloudSubTab}`}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -1874,53 +1737,38 @@ function App() {
                             <>
                               <div className="icon-wrapper mb-4">
                                 <div className="icon-bg">
-                                  {view === 'cloud' ? (
-                                    <Cloud className="w-10 h-10 text-muted-foreground" />
-                                  ) : (
-                                    <HardDrive className="w-10 h-10 text-muted-foreground" />
-                                  )}
+                                  <Cloud className="w-10 h-10 text-muted-foreground" />
                                 </div>
                               </div>
                               <h3 className="text-xl font-semibold text-foreground mb-2 text-center">
-                                {view === 'cloud'
-                                  ? `No cloud ${(cloudSubTab === 'movies' ? 'movies' : 'TV shows')} found`
-                                  : `No local ${(localSubTab === 'movies' ? 'movies' : 'TV shows')} found`
-                                }
+                                {`No cloud ${(cloudSubTab === 'movies' ? 'movies' : 'TV shows')} found`}
                               </h3>
                               <p className="text-muted-foreground max-w-sm mb-6 text-center mx-auto">
-                                {view === 'cloud'
-                                  ? (isGDriveConnected
-                                      ? (hasCloudFolders
-                                          ? 'Your indexed folders don\'t contain any media yet. Add more folders or update your library.'
-                                          : 'Add folders from your Google Drive to start indexing media')
-                                      : 'Connect your Google Drive account to stream your cloud media')
-                                  : 'Add media folders in Settings and scan your library'
+                                {isGDriveConnected
+                                  ? 'Click Update Library to scan your Google Drive for movies and TV shows'
+                                  : 'Connect your Google Drive account to stream your cloud media'
                                 }
                               </p>
                               <div className="flex items-center gap-3">
-                                <button
-                                  onClick={() => {
-                                    setSettingsInitialTab('cloud')
-                                    setSettingsOpen(true)
-                                  }}
-                                  className="btn-primary inline-flex items-center gap-2"
-                                >
-                                  <Sparkles className="w-4 h-4" />
-                                  {view === 'cloud'
-                                    ? (isGDriveConnected
-                                        ? (hasCloudFolders ? 'Manage Folders' : 'Add Cloud Folders')
-                                        : 'Setup Google Drive')
-                                    : 'Add Media Folders'
-                                  }
-                                </button>
-                                {view === 'cloud' && isGDriveConnected && hasCloudFolders && (
+                                {isGDriveConnected ? (
                                   <button
-                                    onClick={handleScan}
+                                    onClick={handleCloudScan}
                                     disabled={isScanning || isCloudIndexing}
-                                    className="btn-secondary inline-flex items-center gap-2"
+                                    className="btn-primary inline-flex items-center gap-2"
                                   >
-                                    <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
-                                    {isScanning ? 'Indexing...' : 'Index Your Files'}
+                                    <RefreshCw className={`w-4 h-4 ${isCloudIndexing ? 'animate-spin' : ''}`} />
+                                    {isCloudIndexing ? 'Updating...' : 'Update Library'}
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setSettingsInitialTab('cloud')
+                                      setSettingsOpen(true)
+                                    }}
+                                    className="btn-primary inline-flex items-center gap-2"
+                                  >
+                                    <Sparkles className="w-4 h-4" />
+                                    {view === 'cloud' ? 'Setup Google Drive' : 'Add Media Folders'}
                                   </button>
                                 )}
                               </div>

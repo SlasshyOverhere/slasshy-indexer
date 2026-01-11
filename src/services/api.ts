@@ -810,8 +810,8 @@ export const getTabVisibility = (): TabVisibility => {
     } catch (error) {
         console.error('Failed to get tab visibility:', error);
     }
-    // Default: show both tabs
-    return { showLocal: true, showCloud: true };
+    // Default: cloud-only mode (no local tab)
+    return { showLocal: false, showCloud: true };
 };
 
 // Save tab visibility settings
