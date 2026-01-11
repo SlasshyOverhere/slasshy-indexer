@@ -756,18 +756,18 @@ function App() {
 
   const openStreamingContent = async (item: StreamingHistoryItem) => {
     const VIDEASY_PLAYER_BASE = 'https://player.videasy.net'
-    const SLASSHY_COLOR = '8B5CF6'
+    const STREAMVAULT_COLOR = '8B5CF6'
 
     let url: string
     let displayTitle = item.title
 
     if (item.media_type === 'movie') {
-      url = `${VIDEASY_PLAYER_BASE}/movie/${item.tmdb_id}?overlay=true&color=${SLASSHY_COLOR}`
+      url = `${VIDEASY_PLAYER_BASE}/movie/${item.tmdb_id}?overlay=true&color=${STREAMVAULT_COLOR}`
     } else {
       const season = item.season || 1
       const episode = item.episode || 1
       displayTitle = `${item.title} S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
-      url = `${VIDEASY_PLAYER_BASE}/tv/${item.tmdb_id}/${season}/${episode}?nextEpisode=true&autoplayNextEpisode=true&episodeSelector=true&overlay=true&color=${SLASSHY_COLOR}`
+      url = `${VIDEASY_PLAYER_BASE}/tv/${item.tmdb_id}/${season}/${episode}?nextEpisode=true&autoplayNextEpisode=true&episodeSelector=true&overlay=true&color=${STREAMVAULT_COLOR}`
     }
 
     // Extract poster path from full URL

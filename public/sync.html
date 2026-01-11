@@ -12,7 +12,7 @@
         // This page is loaded in a hidden iframe by the Tauri app
         // It reads localStorage progress and posts it back to the parent
 
-        const STORAGE_KEY = 'slasshy_streaming_progress';
+        const STORAGE_KEY = 'streamvault_streaming_progress';
 
         try {
             const stored = localStorage.getItem(STORAGE_KEY);
@@ -21,7 +21,7 @@
             // Send progress data to parent window (Tauri app)
             if (window.parent !== window) {
                 window.parent.postMessage({
-                    type: 'slasshy_progress_sync',
+                    type: 'streamvault_progress_sync',
                     data: progress
                 }, '*');
             }
@@ -31,7 +31,7 @@
             console.error('[Sync] Failed to read progress:', e);
             if (window.parent !== window) {
                 window.parent.postMessage({
-                    type: 'slasshy_progress_sync',
+                    type: 'streamvault_progress_sync',
                     data: {},
                     error: e.message
                 }, '*');

@@ -1247,7 +1247,7 @@ async fn check_cloud_changes(
         for title in &titles {
             if let Err(e) = Notification::new()
                 .summary(&format!("{} added to your library", title))
-                .appname("Slasshy")
+                .appname("StreamVault")
                 .timeout(notify_rust::Timeout::Milliseconds(3000))
                 .show()
             {
@@ -2428,7 +2428,7 @@ fn http_get_with_retry_auth(url: &str, credential: &str, max_retries: u32) -> Re
             .tcp_keepalive(std::time::Duration::from_secs(20))
             .http1_only()
             .tcp_nodelay(true)
-            .user_agent("SlasshyMediaIndexer/1.0")
+            .user_agent("StreamVault/1.0")
             .build() {
                 Ok(c) => c,
                 Err(e) => {
@@ -2495,7 +2495,7 @@ fn http_get_with_retry(url: &str, max_retries: u32) -> Result<reqwest::blocking:
             // Set TCP nodelay for faster request/response
             .tcp_nodelay(true)
             // Add a user agent (some APIs block requests without one)
-            .user_agent("SlasshyMediaIndexer/1.0")
+            .user_agent("StreamVault/1.0")
             .build() {
                 Ok(c) => c,
                 Err(e) => {
@@ -3395,7 +3395,7 @@ fn create_main_window(app: &AppHandle) -> Result<tauri::Window, tauri::Error> {
         "main",
         WindowUrl::App("index.html".into())
     )
-    .title("Slasshy Media Indexer")
+    .title("StreamVault")
     .inner_size(1200.0, 800.0)
     .resizable(true)
     .build()
@@ -3671,7 +3671,7 @@ async fn background_check_cloud_changes(app_handle: &AppHandle) -> Result<CloudI
         for title in &titles {
             Notification::new()
                 .summary(&format!("{} added to your library", title))
-                .appname("Slasshy")
+                .appname("StreamVault")
                 .timeout(notify_rust::Timeout::Milliseconds(3000))
                 .show()
                 .ok();
@@ -3813,7 +3813,7 @@ struct GitHubAsset {
 #[tauri::command]
 async fn check_for_updates() -> Result<UpdateInfo, String> {
     let current_version = env!("CARGO_PKG_VERSION");
-    let repo = "SlasshyOverhere/slasshy-desktop";
+    let repo = "SlasshyOverhere/streamvault";
 
     println!("[UPDATE] Checking for updates... Current version: {}", current_version);
 
@@ -3821,7 +3821,7 @@ async fn check_for_updates() -> Result<UpdateInfo, String> {
 
     let client = reqwest::Client::new();
     let mut request = client.get(&url)
-        .header("User-Agent", "Slasshy-Desktop-Updater")
+        .header("User-Agent", "StreamVault-Updater")
         .header("Accept", "application/vnd.github+json");
 
     // Add auth header if PAT is configured
@@ -3984,8 +3984,8 @@ fn main() {
     dotenvy::dotenv().ok();
 
     // Prepare deep link - must be done before building the app
-    // This registers the slasshyindexer:// protocol handler
-    tauri_plugin_deep_link::prepare("com.slasshy.desktop");
+    // This registers the streamvault:// protocol handler
+    tauri_plugin_deep_link::prepare("com.streamvault.app");
 
     // Initialize paths
     let db_path = database::get_database_path();
@@ -4014,7 +4014,7 @@ fn main() {
     };
 
     // Create system tray menu
-    let show = CustomMenuItem::new("show".to_string(), "Show Slasshy");
+    let show = CustomMenuItem::new("show".to_string(), "Show StreamVault");
     let quit = CustomMenuItem::new("quit".to_string(), "Quit");
     let tray_menu = SystemTrayMenu::new()
         .add_item(show)
@@ -4085,12 +4085,12 @@ fn main() {
         .manage(state)
         .setup(|app| {
             // Register deep link handler for OAuth callback
-            // The callback page redirects to: slasshyindexer://oauth?code=XXX
+            // The callback page redirects to: streamvault://oauth?code=XXX
             let handle = app.handle();
-            tauri_plugin_deep_link::register("slasshyindexer", move |request| {
+            tauri_plugin_deep_link::register("streamvault", move |request| {
                 println!("[DEEPLINK] Received: {}", request);
 
-                // Parse the deep link URL: slasshyindexer://oauth?code=XXX
+                // Parse the deep link URL: streamvault://oauth?code=XXX
                 if let Ok(url) = url::Url::parse(&request) {
                     // Look for the authorization code
                     if let Some(code) = url.query_pairs().find(|(k, _)| k == "code").map(|(_, v)| v.to_string()) {

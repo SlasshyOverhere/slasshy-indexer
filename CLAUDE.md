@@ -26,7 +26,7 @@ npx eslint src/
 
 ## Architecture
 
-Slasshy Desktop is a Tauri application with a React frontend and Rust backend for managing local media libraries.
+StreamVault is a Tauri application with a React frontend and Rust backend for managing local media libraries.
 
 ### Tech Stack
 - **Frontend**: React 18, TypeScript, Vite, TailwindCSS, Radix UI, Framer Motion
@@ -40,7 +40,7 @@ Slasshy Desktop is a Tauri application with a React frontend and Rust backend fo
 | File | Purpose |
 |------|---------|
 | `main.rs` | Tauri commands (40+), app state management, system tray, event handlers |
-| `database.rs` | SQLite schema and operations, app data paths (%APPDATA%/Slasshy/) |
+| `database.rs` | SQLite schema and operations, app data paths (%APPDATA%/StreamVault/) |
 | `media_manager.rs` | Media folder scanning, file parsing, orphan cleanup |
 | `watcher.rs` | Polling-based file watcher (5-second interval), Windows notifications |
 | `tmdb.rs` | TMDB API client, metadata fetching, image downloading |
@@ -69,7 +69,7 @@ Slasshy Desktop is a Tauri application with a React frontend and Rust backend fo
 
 **Events**: Backend-to-frontend communication uses Tauri events (`scan-progress`, `scan-complete`, `mpv-playback-ended`, `library-updated`, `notification`).
 
-**Image Caching**: Posters/stills are downloaded to `%APPDATA%/Slasshy/image_cache/` and served via Tauri's asset protocol.
+**Image Caching**: Posters/stills are downloaded to `%APPDATA%/StreamVault/image_cache/` and served via Tauri's asset protocol.
 
 ### Media Types
 
@@ -79,7 +79,7 @@ Slasshy Desktop is a Tauri application with a React frontend and Rust backend fo
 
 ### Data Storage
 
-All data is stored in `%APPDATA%/Slasshy/`:
+All data is stored in `%APPDATA%/StreamVault/`:
 - `media_library.db` - SQLite database
 - `media_config.json` - User configuration
 - `image_cache/` - Downloaded posters and thumbnails

@@ -34,7 +34,7 @@ fn get_lua_script_content(progress_file: &str) -> String {
     let clean_path = progress_file.replace("\\", "/");
     
     format!(r#"
--- Slasshy Progress Tracker for MPV
+-- StreamVault Progress Tracker for MPV
 -- Saves playback position to a JSON file periodically and on quit
 
 local progress_file = "{}"
@@ -125,7 +125,7 @@ mp.register_event("file-loaded", function()
     mp.add_timeout(1, save_progress)
 end)
 
-mp.msg.info("Slasshy progress tracker loaded.")
+mp.msg.info("StreamVault progress tracker loaded.")
 "#, clean_path)
 }
 

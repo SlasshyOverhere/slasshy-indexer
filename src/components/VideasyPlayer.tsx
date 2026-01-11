@@ -25,7 +25,7 @@ interface VideasyProgressEvent {
 }
 
 const VIDEASY_BASE_URL = 'https://player.videasy.net';
-const SLASSHY_COLOR = '8B5CF6'; // Slasshy brand purple
+const STREAMVAULT_COLOR = '8B5CF6'; // StreamVault brand purple
 
 export function VideasyPlayer({
     tmdbId,
@@ -47,8 +47,8 @@ export function VideasyPlayer({
         let baseUrl: string | null = null;
         const params = new URLSearchParams();
 
-        // Add Slasshy brand color and Netflix-style overlay for all content
-        params.set('color', SLASSHY_COLOR);
+        // Add StreamVault brand color and Netflix-style overlay for all content
+        params.set('color', STREAMVAULT_COLOR);
         params.set('overlay', 'true');
 
         if (mediaType === 'movie') {

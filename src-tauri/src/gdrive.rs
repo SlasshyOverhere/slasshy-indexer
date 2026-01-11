@@ -56,7 +56,7 @@ fn get_redirect_uri() -> String {
 
 // Check if we're in development mode
 pub fn is_dev_mode() -> bool {
-    std::env::var("SLASSHY_DEV").is_ok() || cfg!(debug_assertions)
+    std::env::var("STREAMVAULT_DEV").is_ok() || cfg!(debug_assertions)
 }
 const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
@@ -683,7 +683,7 @@ pub async fn wait_for_oauth_callback() -> Result<String, String> {
         <body>
             <div class="container">
                 <h1>✓ Authorization Successful!</h1>
-                <p>You can close this window and return to Slasshy.</p>
+                <p>You can close this window and return to StreamVault.</p>
             </div>
         </body>
         </html>

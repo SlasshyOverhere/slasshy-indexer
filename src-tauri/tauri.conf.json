@@ -7,7 +7,7 @@
     "withGlobalTauri": false
   },
   "package": {
-    "productName": "Slasshy Media Indexer",
+    "productName": "StreamVault",
     "version": "3.0.0"
   },
   "tauri": {
@@ -80,7 +80,7 @@
         "icons/icon.png",
         "icons/icon.ico"
       ],
-      "identifier": "com.slasshy.desktop",
+      "identifier": "com.streamvault.app",
       "longDescription": "",
       "macOS": {
         "entitlements": null,
@@ -115,7 +115,7 @@
         "fullscreen": false,
         "height": 800,
         "resizable": true,
-        "title": "Slasshy Media Indexer",
+        "title": "StreamVault",
         "width": 1200
       }
     ]

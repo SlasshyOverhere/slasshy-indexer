@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Slasshy - Google Drive Authorization</title>
+    <title>StreamVault - Google Drive Authorization</title>
     <style>
         * {
             margin: 0;
@@ -225,7 +225,7 @@
             </svg>
         </div>
 
-        <h1>Slasshy</h1>
+        <h1>StreamVault</h1>
         <p class="subtitle">Google Drive Authorization</p>
 
         <!-- Loading State -->
@@ -251,7 +251,7 @@
                 </div>
                 <span class="status-text success">Authorization Successful!</span>
             </div>
-            <p class="message">Redirecting you back to Slasshy...</p>
+            <p class="message">Redirecting you back to StreamVault...</p>
 
             <div class="redirect-info">
                 <p>You should be redirected automatically. If not, click the button below:</p>
@@ -263,7 +263,7 @@
                     <polyline points="15 3 21 3 21 9"/>
                     <line x1="10" y1="14" x2="21" y2="3"/>
                 </svg>
-                Open Slasshy
+                Open StreamVault
             </a>
         </div>
 
@@ -286,7 +286,7 @@
         </div>
 
         <p class="footer">
-            <a href="https://github.com/anthropics/slasshy" target="_blank">Slasshy</a> - Your Personal Media Center
+            <a href="https://github.com/pgtgit/streamvault" target="_blank">StreamVault</a> - Your Personal Media Center
         </p>
     </div>
 
@@ -307,7 +307,7 @@
 
         // Build deep link URL
         function buildDeepLink(authCode) {
-            return `slasshyindexer://oauth?code=${encodeURIComponent(authCode)}${state ? '&state=' + encodeURIComponent(state) : ''}`;
+            return `streamvault://oauth?code=${encodeURIComponent(authCode)}${state ? '&state=' + encodeURIComponent(state) : ''}`;
         }
 
         // Process the OAuth callback

@@ -148,10 +148,10 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
     try {
       if (checked) {
         await invoke('plugin:autostart|enable')
-        toast({ title: "Auto Startup Enabled", description: "Slasshy will now start automatically." })
+        toast({ title: "Auto Startup Enabled", description: "StreamVault will now start automatically." })
       } else {
         await invoke('plugin:autostart|disable')
-        toast({ title: "Auto Startup Disabled", description: "Slasshy will not start automatically." })
+        toast({ title: "Auto Startup Disabled", description: "StreamVault will not start automatically." })
       }
       setAutoStart(checked)
     } catch (error) {
@@ -391,7 +391,7 @@ export function SettingsModal({ open, onOpenChange, onRestartOnboarding, initial
                           <div>
                             <Label className="text-base font-medium">Run on Startup</Label>
                             <p className="text-sm text-muted-foreground">
-                              Automatically start Slasshy when you log in
+                              Automatically start StreamVault when you log in
                             </p>
                           </div>
                         </div>

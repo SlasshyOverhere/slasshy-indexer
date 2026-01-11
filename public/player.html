@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Slasshy Player</title>
+    <title>StreamVault Player</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
@@ -461,7 +461,7 @@
                     <path d="M8 5v14l11-7z" />
                 </svg>
             </div>
-            <span class="branding-text">Slasshy Media</span>
+            <span class="branding-text">StreamVault</span>
         </div>
     </div>
 
@@ -512,8 +512,8 @@
             }
 
             const VIDEASY_BASE = 'https://player.videasy.net';
-            const STORAGE_KEY = 'slasshy_streaming_progress';
-            const PRIMARY_COLOR = '8B5CF6'; // Slasshy purple without #
+            const STORAGE_KEY = 'streamvault_streaming_progress';
+            const PRIMARY_COLOR = '8B5CF6'; // StreamVault purple without #
 
             // Parse URL parameters
             const params = new URLSearchParams(window.location.search);
@@ -603,7 +603,7 @@
             const SAVE_INTERVAL = 10; // Save every 10 seconds of playback
 
             // Update title
-            document.title = `${title} - Slasshy Player`;
+            document.title = `${title} - StreamVault Player`;
             document.getElementById('titleText').textContent = title;
 
             // Debug mode
@@ -749,7 +749,7 @@
             let playerUrl;
             const queryParams = new URLSearchParams();
 
-            // Add Slasshy brand color
+            // Add StreamVault brand color
             queryParams.set('color', PRIMARY_COLOR);
 
             // Add Netflix-style overlay

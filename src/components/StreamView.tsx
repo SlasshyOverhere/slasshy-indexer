@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 // Videasy player base URL - opens directly in browser
 const VIDEASY_PLAYER_BASE = 'https://player.videasy.net';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
-const SLASSHY_COLOR = 'FFFFFF'; // Slasshy brand white (monochrome)
+const STREAMVAULT_COLOR = 'FFFFFF'; // StreamVault brand white (monochrome)
 
 // Build Videasy player URL with all features
 function buildVideasyUrl(
@@ -24,12 +24,12 @@ function buildVideasyUrl(
 
     if (mediaType === 'movie') {
         baseUrl = `${VIDEASY_PLAYER_BASE}/movie/${tmdbId}`;
-        queryString = `overlay=true&color=${SLASSHY_COLOR}`;
+        queryString = `overlay=true&color=${STREAMVAULT_COLOR}`;
     } else {
         const s = season || 1;
         const ep = episode || 1;
         baseUrl = `${VIDEASY_PLAYER_BASE}/tv/${tmdbId}/${s}/${ep}`;
-        queryString = `nextEpisode=true&autoplayNextEpisode=true&episodeSelector=true&overlay=true&color=${SLASSHY_COLOR}`;
+        queryString = `nextEpisode=true&autoplayNextEpisode=true&episodeSelector=true&overlay=true&color=${STREAMVAULT_COLOR}`;
     }
 
     return `${baseUrl}?${queryString}`;

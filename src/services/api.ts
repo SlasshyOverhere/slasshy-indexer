@@ -660,7 +660,7 @@ export const getTmdbImageUrl = (path: string | undefined, size: 'w92' | 'w185' |
 
 // Videasy streaming URL helpers
 const VIDEASY_BASE_URL = 'https://player.videasy.net';
-const SLASSHY_COLOR = '8B5CF6'; // Slasshy brand purple
+const STREAMVAULT_COLOR = '8B5CF6'; // StreamVault brand purple
 
 /**
  * Get the Videasy player URL for a media item with all enhanced features
@@ -690,7 +690,7 @@ export function getVideasyUrl(
 ): string | null {
     if (!tmdbId) return null;
 
-    const color = options?.color || SLASSHY_COLOR;
+    const color = options?.color || STREAMVAULT_COLOR;
     let baseUrl: string;
     let queryString: string;
 
@@ -760,7 +760,7 @@ export const openVideasyPlayer = async (
 
 // ==================== ONBOARDING ====================
 
-const ONBOARDING_KEY = 'slasshy_onboarding_completed';
+const ONBOARDING_KEY = 'streamvault_onboarding_completed';
 const ONBOARDING_VERSION = '1'; // Increment to show onboarding again after major updates
 
 // Check if user has completed onboarding
@@ -793,7 +793,7 @@ export const resetOnboarding = (): void => {
 
 // ==================== TAB VISIBILITY ====================
 
-const TAB_VISIBILITY_KEY = 'slasshy_tab_visibility';
+const TAB_VISIBILITY_KEY = 'streamvault_tab_visibility';
 
 export interface TabVisibility {
     showLocal: boolean;

@@ -14,7 +14,7 @@ export function MainAppTour({ isActive, onComplete, onSkip, setView }: MainAppTo
       id: 'sidebar-intro',
       target: '[data-tour="sidebar"]',
       title: 'Your Navigation Hub',
-      description: 'This sidebar is your main navigation. Let me show you what each section does and how to get the most out of Slasshy.',
+      description: 'This sidebar is your main navigation. Let me show you what each section does and how to get the most out of StreamVault.',
       position: 'right',
       highlight: false,
     },
@@ -74,7 +74,7 @@ export function MainAppTour({ isActive, onComplete, onSkip, setView }: MainAppTo
       id: 'scan-library',
       target: '[data-tour="scan-library-btn"]',
       title: 'Update Library',
-      description: 'Click this to scan your media folders for new content. Slasshy will automatically fetch posters, descriptions, and organize everything.',
+      description: 'Click this to scan your media folders for new content. StreamVault will automatically fetch posters, descriptions, and organize everything.',
       position: 'right',
     },
 
@@ -83,7 +83,7 @@ export function MainAppTour({ isActive, onComplete, onSkip, setView }: MainAppTo
       id: 'settings-btn',
       target: '[data-tour="settings-btn"]',
       title: 'Settings',
-      description: 'Configure your media folders, TMDB API key, Google Drive, player settings, and more. This is where you set up Slasshy to work with your library.',
+      description: 'Configure your media folders, TMDB API key, Google Drive, player settings, and more. This is where you set up StreamVault to work with your library.',
       position: 'right',
     },
 

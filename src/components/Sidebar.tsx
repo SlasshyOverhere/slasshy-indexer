@@ -190,7 +190,7 @@ export function Sidebar({
               className="flex flex-col overflow-hidden"
             >
               <h1 className="text-lg font-bold text-white tracking-tight">
-                Slasshy
+                StreamVault
               </h1>
               <span className="text-[10px] text-white/60 font-semibold tracking-[0.2em] uppercase -mt-0.5">
                 Media Center

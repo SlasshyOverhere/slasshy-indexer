@@ -1,10 +1,10 @@
 [package]
-name = "slasshy-desktop"
+name = "streamvault"
 version = "3.0.0"
 description = "A Tauri Media Library App"
-authors = ["you"]
+authors = ["Suman Patgiri"]
 license = ""
-repository = ""
+repository = "https://github.com/SlasshyOverhere/slasshy-indexer"
 edition = "2021"
 
 [build-dependencies]

@@ -2,10 +2,10 @@ use rusqlite::{Connection, Result, params};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-const APP_NAME: &str = "Slasshy";
+const APP_NAME: &str = "StreamVault";
 
 /// Get the app data directory, with separate paths for dev and production builds
-/// Dev builds use "Slasshy-Dev" to keep data isolated from production
+/// Dev builds use "StreamVault-Dev" to keep data isolated from production
 pub fn get_app_data_dir() -> PathBuf {
     // Use a different directory name for debug/dev builds
     let dir_name = if cfg!(debug_assertions) {

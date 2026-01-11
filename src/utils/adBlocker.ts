@@ -97,7 +97,7 @@ export function generateAdBlockCSS(): string {
  * Inject ad-blocking CSS into the document
  */
 export function injectAdBlockCSS(): void {
-    const styleId = 'slasshy-adblock-style';
+    const styleId = 'streamvault-adblock-style';
 
     // Remove existing style if present
     const existing = document.getElementById(styleId);
@@ -269,7 +269,7 @@ export function initAdBlocker(): () => void {
     return () => {
         cleanupPopups();
         cleanupObserver();
-        const style = document.getElementById('slasshy-adblock-style');
+        const style = document.getElementById('streamvault-adblock-style');
         if (style) style.remove();
     };
 }

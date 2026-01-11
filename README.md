@@ -1,4 +1,4 @@
-# Slasshy Desktop
+# StreamVault
 
 A modern, high-performance media library manager built with **Tauri**, **Rust**, and **React**. Automatically indexes your local video collection and Google Drive, fetches rich metadata from TMDB, and provides seamless playback through **MPV**.
 
@@ -62,8 +62,8 @@ A modern, high-performance media library manager built with **Tauri**, **Rust**,
 
 ```bash
 # Clone the repository
-git clone https://github.com/SlasshyOverhere/slasshy-indexer.git
-cd slasshy-desktop
+git clone https://github.com/SlasshyOverhere/streamvault.git
+cd streamvault
 
 # Install dependencies
 npm install
@@ -103,17 +103,17 @@ Installers will be generated in `src-tauri/target/release/bundle/`
 1. Create an account at [themoviedb.org](https://www.themoviedb.org/)
 2. Go to Settings > API
 3. Request an API key (free for personal use)
-4. Copy the "API Read Access Token" into Slasshy settings
+4. Copy the "API Read Access Token" into StreamVault settings
 
 ### Google Drive Setup
 1. Click "Connect Google Drive" in Settings
-2. Authorize Slasshy to access your Drive
+2. Authorize StreamVault to access your Drive
 3. Use "Index Drive" button in sidebar to scan your cloud media
 
 ## Project Structure
 
 ```
-slasshy-desktop/
+streamvault/
 ├── src/                    # React frontend
 │   ├── components/         # UI components
 │   ├── services/           # API & utility functions
